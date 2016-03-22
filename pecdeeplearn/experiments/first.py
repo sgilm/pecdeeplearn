@@ -1,7 +1,7 @@
 import theano
 import theano.tensor as T
 import lasagne
-import volume
+import volumetools
 
 
 if __name__ == '__main__':
@@ -13,8 +13,8 @@ if __name__ == '__main__':
     # create a small convolutional neural network
     from lasagne.nonlinearities import leaky_rectify, softmax
     
-    l_in = lasagne.layers.InputLayer(tuple([None] + kernel_shape), input_var)
-    l_hidden = lasagne.layers.DenseLayer(l_in, num_units=200)
+    network = lasagne.layers.InputLayer(tuple([None] + kernel_shape), input_var)
+    network = lasagne.layers.DenseLayer(l_in, num_units=200)
     network = lasagne.layers.DenseLayer(l_hidden, num_units=2,nonlinearity=T.nnet.softmax)
 
     # create loss function
