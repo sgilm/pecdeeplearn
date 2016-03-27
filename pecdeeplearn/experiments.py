@@ -1,45 +1,33 @@
 import theano
 import theano.tensor as T
 import lasagne
-from .. import tools
-import sys
+import datatools as dt
+import volumetools as vt
+import features as ft
+import networks as nt
 
 
-if __name__ == '__main__':
-
-    import utils
-    import features
-
-    print(1)
-    sys.exit()
+def first():
     
-    volume = utils.load_volume(utils.list_volumes()[0])
+    data_path = dt.read_data_path()
+    volume = dt.load_volume(dt.list_volumes(data_path)[0])
+    volume.switch_plane('axial')
+    train_vol = volume[250:300]
+    test_vol = volume[300]
 
-    it = BatchIterator(volume)
+    train_vol.show_slice(0)
+
+    it = vt.BatchIterator(volume)
 
     it.add_feature(
-        lambda volume, point: features.patch(volume, point, [1, 4, 1])
+        lambda volume, point: ft.patch(volume, point, [])
     )
-    it.add_feature(
-        lambda volume, point: features.patch(volume, point, [4, 1, 1])
-    )
-
-    gen = it.iterate(100)
-
-    y = next(gen)
-
-    x = 1
 
     # create Theano variables for input and target minibatch
     input_var = T.tensor4('X', dtype='int32')
     target_var = T.vector('y', dtype='int32')
 
-    # create a small convolutional neural network
-    from lasagne.nonlinearities import leaky_rectify, softmax
-    
-    network = lasagne.layers.InputLayer(tuple([None] + kernel_shape), input_var)
-    network = lasagne.layers.DenseLayer(l_in, num_units=200)
-    network = lasagne.layers.DenseLayer(l_hidden, num_units=2,nonlinearity=T.nnet.softmax)
+    network = networks.basic(input_shape, input_var)
 
     # create loss function
     prediction = lasagne.layers.get_output(network)
