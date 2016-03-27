@@ -1,6 +1,6 @@
 import os
 import nibabel
-import volumetools
+import tools
 
 
 def read_data_path():
@@ -52,6 +52,11 @@ def load_volume(volume_name):
     
     mri = nibabel.load(os.path.join(data_path, 'mris', mri_filename))
     seg =  nibabel.load(os.path.join(data_path, 'segmentations', seg_filename))
-    volume = volumetools.Volume(mri.get_data(), seg.get_data())
+    volume = tools.Volume(mri.get_data(), seg.get_data())
 
     return volume
+
+
+if __name__ == '__main__':
+    volumes = list_volumes()
+    volume = load_volume(volumes[0])

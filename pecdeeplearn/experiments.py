@@ -1,10 +1,34 @@
 import theano
 import theano.tensor as T
 import lasagne
-import volumetools
+from .. import tools
+import sys
 
 
 if __name__ == '__main__':
+
+    import utils
+    import features
+
+    print(1)
+    sys.exit()
+    
+    volume = utils.load_volume(utils.list_volumes()[0])
+
+    it = BatchIterator(volume)
+
+    it.add_feature(
+        lambda volume, point: features.patch(volume, point, [1, 4, 1])
+    )
+    it.add_feature(
+        lambda volume, point: features.patch(volume, point, [4, 1, 1])
+    )
+
+    gen = it.iterate(100)
+
+    y = next(gen)
+
+    x = 1
 
     # create Theano variables for input and target minibatch
     input_var = T.tensor4('X', dtype='int32')
