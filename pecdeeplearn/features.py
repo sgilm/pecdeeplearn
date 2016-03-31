@@ -31,11 +31,12 @@ def patch(volume, point, kernel_shape):
 
 def intensity_mean(volume, point, kernel_shape):
     voxel_patch = patch(volume, point, kernel_shape)
-    mean_voxel_value = np.mean(voxel_patch)
-    return mean_voxel_value
+    return np.mean(voxel_patch)
 
 
 def intensity_variance(volume, point, kernel_shape):
     voxel_patch = patch(volume, point, kernel_shape)
-    voxel_variance = np.var(voxel_patch)
-    return voxel_variance
+    return np.var(voxel_patch)
+
+def probability(volume, point, prob_map):
+    return prob_map[point]
