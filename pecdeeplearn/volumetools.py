@@ -60,6 +60,7 @@ class Volume:
                 swap_axes(self, 1, 2)
 
         self.plane = plane
+        self.shape = self.mri_data.shape[:3]
 
     def get_slice(self, slice_index):
         """
@@ -72,7 +73,7 @@ class Volume:
             mri_slice_data (numpy.array): a two dimensional array of voxel
                 intensities from the mri_data
             seg_slice_data (numpy.array): a two dimensional array of binary
-                voxels defining a sgementation.
+                voxels defining a segmentation.
                 
         """
         mri_slice_data = np.array(self.mri_data[slice_index])
@@ -141,24 +142,32 @@ class BatchIterator:
 
         return self.input_size
 
-    def iterate(self, batch_size):
+    def iterate(self, batch_size, map):
         ranges_to_iterate = [range(size) for size in self.volume.shape]
 
         input_size = self.get_input_size()
 
         input_batch = np.empty((batch_size, input_size), dtype='float64')
-        output_batch = np.empty(batch_size, dtype='float64')
+        output_batch = np.empty(batch_size, dtype='int64')
 
         count = 0
         for point in itertools.product(*ranges_to_iterate):
-            try:
-                temp = []
-                for feature in self.features:
-                    temp.extend(list(feature(self.volume, point).flatten()))
-                input_batch[count % batch_size] = np.array(temp)
-                output_batch[count % batch_size] = self.volume.seg_data[point]
-                count += 1
-                if count % batch_size == 0:
-                    yield input_batch, output_batch
-            except:
-                continue
+            if map[point]:
+                try:
+                    temp = []
+                    for feature in self.features:
+                        temp.extend(list(feature(self.volume, point).flatten()))
+                    input_batch[count % batch_size] = np.array(temp)
+                    output_batch[count % batch_size] = self.volume.seg_data[point]
+                    count += 1
+                    if count % batch_size == 0:
+                        yield input_batch, output_batch
+                except:
+                    continue
+
+
+def build_prob_map(volumes):
+    counts = sum([volume.seg_data for volume in volumes])
+    prob_map = np.array(counts / np.amax(counts))
+
+    return prob_map
