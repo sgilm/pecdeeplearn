@@ -5,35 +5,41 @@ import datatools as dt
 import volumetools as vt
 import features as ft
 import networks as nt
+import numpy as np
+import scipy.misc
 
 
 def first():
     
     data_path = dt.read_data_path()
-    volume = dt.load_volume(dt.list_volumes(data_path)[0])
-    volume.switch_plane('axial')
+    volume_list = dt.list_volumes(data_path)
+    volumes = [dt.load_volume(volume) for volume in volume_list]
 
-    train_vol = volume[100:150, 150:250]
-    test_vol = volume[150]
+    prob_map = vt.build_prob_map(volumes)
 
-    train_vol.show_slice(0)
+    it = vt.DataProcessor(volumes[0])
 
-    it = vt.BatchIterator(train_vol)
-
-    kernel_shape = [1, 9, 9]
+    kernel_shape = [3, 3, 3]
     it.add_feature(
         lambda volume, point: ft.patch(volume, point, kernel_shape)
     )
     it.add_feature(
         lambda volume, point: ft.intensity_mean(volume, point, kernel_shape)
     )
+    it.add_feature(
+        lambda volume, point: ft.probability(volume, point, prob_map)
+    )
+
+    map = np.array(prob_map, dtype='bool')
+    batch_size = 100
+    # x = it.get_training_data(batch_size, map)
+    # y = next(x)
 
     # Create Theano variables for input and target minibatch.
     input_var = T.matrix('X', dtype='float64')
-    target_var = T.vector('y', dtype='float64')
+    target_var = T.vector('y', dtype='int64')
 
-    batch_size = 100
-    network = nt.basic((batch_size, it.get_input_size()), input_var)
+    network = nt.basic((batch_size, it.get_vector_size()), input_var)
 
     # Create loss function.
     prediction = lasagne.layers.get_output(network)
@@ -52,11 +58,11 @@ def first():
     train_fn = theano.function([input_var, target_var], loss, updates=updates)
 
     # Train network.
-    training_data = it(100)
-    for epoch in range(5):
+    training_data = it.iterate(batch_size, map)
+    for epoch in range(1):
         loss = 0
         length = 0
-        for input_batch, target_batch in training_data:
+        for input_batch, target_batch, _ in training_data:
             loss += train_fn(input_batch, target_batch)
             length += 1
             if length % 100 == 0:
@@ -65,9 +71,22 @@ def first():
         print("Epoch %d: Loss %g" % (epoch + 1, loss / length))
 
     # Use trained network for predictions.
-    # Test_prediction = lasagne.layers.get_output(network, deterministic=True)
-    # predict = theano.function([input_var], T.argmax(test_prediction, axis=1))
+    test_prediction = lasagne.layers.get_output(network, deterministic=True)
+    predict = theano.function([input_var], T.argmax(test_prediction, axis=1))
 
+    it_test = vt.DataProcessor(volumes[0][190:200])
+    it_test.add_feature(
+        lambda volume, point: ft.patch(volume, point, kernel_shape)
+    )
+    it_test.add_feature(
+        lambda volume, point: ft.intensity_mean(volume, point, kernel_shape)
+    )
+    it_test.add_feature(
+        lambda volume, point: ft.probability(volume, point, prob_map)
+    )
+
+    test_data = it_test.get_test_volume(predict)
+    scipy.misc.toimage(test_data[0]).show()
 
 if __name__ == '__main__':
 
