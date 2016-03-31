@@ -109,61 +109,75 @@ class Volume:
                       self.seg_data[good_indices], plane=self.plane)
 
 
-class BatchIterator:
+class DataProcessor:
     def __init__(self, volume):
         self.volume = volume
         self.features = []
-        self.input_size = None
+        self.vector_size = None
 
     def add_feature(self, feature):
         self.features.append(feature)
-        self.input_size = None
+        self.vector_size = None
 
-    def get_input_size(self):
-        if not self.input_size:
+    def get_vector_size(self):
+        if not self.vector_size:
 
             # Get the size of the input vector.
             ranges_to_iterate = [range(size) for size in self.volume.shape]
-            num_inputs = 0
+            point_vector = []
             for point in itertools.product(*ranges_to_iterate):
                 try:
-                    num_inputs = 0
-                    for feature in self.features:
-                        feature_data = feature(self.volume, point)
-                        num_inputs += feature_data.size
+                    point_vector = self.get_point_vector(point)
                     break
                 except:
                     continue
 
-            if num_inputs == 0:
-                raise Exception
+            self.vector_size = len(point_vector)
 
-            self.input_size = num_inputs
+        return self.vector_size
 
-        return self.input_size
+    def get_point_vector(self, point):
+        temp = []
+        for feature in self.features:
+            temp.extend(list(feature(self.volume, point).flatten()))
 
-    def iterate(self, batch_size, map):
+        return np.array(temp)
+
+    def iterate(self, batch_size, map=None):
         ranges_to_iterate = [range(size) for size in self.volume.shape]
 
-        input_size = self.get_input_size()
+        self.get_vector_size()
 
-        input_batch = np.empty((batch_size, input_size), dtype='float64')
-        output_batch = np.empty(batch_size, dtype='int64')
+        input_batch = np.zeros((batch_size, self.vector_size), dtype='float64')
+        output_batch = np.zeros(batch_size, dtype='int64')
+        point_batch = np.zeros((batch_size, len(self.volume.shape)), dtype='int64')
 
+        process_point = True
         count = 0
         for point in itertools.product(*ranges_to_iterate):
-            if map[point]:
+            if map is not None:
+                process_point = bool(map[point])
+
+            if process_point:
                 try:
-                    temp = []
-                    for feature in self.features:
-                        temp.extend(list(feature(self.volume, point).flatten()))
-                    input_batch[count % batch_size] = np.array(temp)
+                    input_batch[count % batch_size] = self.get_point_vector(point)
                     output_batch[count % batch_size] = self.volume.seg_data[point]
+                    point_batch[count % batch_size] = point
                     count += 1
                     if count % batch_size == 0:
-                        yield input_batch, output_batch
+                        yield input_batch, output_batch, point_batch
                 except:
                     continue
+
+    def get_test_volume(self, predict):
+        test_volume = np.zeros(self.volume.shape)
+
+        for input_batch, _, point_batch in self.iterate(100):
+            prediction = predict(input_batch)
+            for i in range(prediction):
+                test_volume[tuple(point_batch[i])] = prediction[i]
+
+        return test_volume
 
 
 def build_prob_map(volumes):
