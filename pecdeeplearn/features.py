@@ -2,41 +2,82 @@ import numpy as np
 
 
 def patch(volume, point, kernel_shape):
-    # Ensure the kernel dimensions are odd, so it can be centred on a voxel.
+    """Fetch a patch of a specified size from a specified volume."""
+
+    # Convert kernel shape to a mutable object for fixing up.
+    kernel_shape = list(kernel_shape)
+
+    # Ensure each kernel dimensions is odd, so it can be centred on a voxel.
     for i in range(len(kernel_shape)):
         if kernel_shape[i] % 2 == 0:
             kernel_shape[i] -= 1
 
-    # Extend the kernel shape if fewer dimensions are given.
-    if len(kernel_shape) < 3:
-        kernel_shape += [1] * (3 - len(kernel_shape))
-    num_dims = len(kernel_shape)
+    # The kernel must include 3 dimensions.
+    if len(kernel_shape) != 3:
+        raise Exception('The input kernel must include 3 dimensions.')
 
+    # Create arrays to represent the kernel.
     kernel_starts = [-(size // 2) for size in kernel_shape]
     kernel_stops = [size // 2 + 1 for size in kernel_shape]
     kernel_ranges = [np.array([kernel_starts[i], kernel_stops[i]])
-                     for i in range(num_dims)]
+                     for i in range(len(kernel_shape))]
 
-    patch_frames = [list(kernel_ranges[i] + point[i]) for i in range(num_dims)]
+    # Create a list of patch frames as boundaries for extracting the patch.
+    patch_frames = [list(kernel_ranges[i] + point[i])
+                    for i in range(len(kernel_ranges))]
 
-    for i in range(num_dims):
+    # Check the validity of the patch frames.  If any indices are outside the
+    # scope of the volume, raise an exception.
+    for i in range(len(patch_frames)):
+
+        # Check that each frame's starting element is >= 0.
         if patch_frames[i][0] < 0:
             raise Exception
+
+        # Check that each frame's ending element is <= max.
         elif patch_frames[i][1] > volume.shape[i]:
             raise Exception
 
+    # Create a tuple of the patch's indices.
     patch_indices = tuple([slice(*frame) for frame in patch_frames])
-    return np.array(volume.mri_data[patch_indices])
+
+    # Extract patch data from volume.
+    patch_data = volume.mri_data[patch_indices]
+
+    # Create dimensions of the patch array to return (patches are used in
+    # convolutions, so the first dimension should always be 1 - for the number
+    # of colour channels.
+    patch_shape = [1] + [size for size in kernel_shape if size != 1]
+
+    return np.array(patch_data).reshape(patch_shape)
 
 
 def intensity_mean(volume, point, kernel_shape):
+    """Get the mean intensity of points within a patch of specified shape."""
+
+    # Get the patch form the volume.
     voxel_patch = patch(volume, point, kernel_shape)
+
     return np.mean(voxel_patch)
 
 
 def intensity_variance(volume, point, kernel_shape):
+    """Get the variance of points within a patch of specified shape."""
+
+    # Get the patch from the volume.
     voxel_patch = patch(volume, point, kernel_shape)
+
     return np.var(voxel_patch)
+
 
 def probability(volume, point, prob_map):
     return prob_map[point]
+
+
+def landmark_displacement(volume, point, landmark_name):
+    """Get the displacement of a point from a given landmark."""
+
+    # Convert the coordinates of the point to an array for ease of use.
+    coordinate_array = np.array(point)
+
+    return volume.landmarks[landmark_name] - coordinate_array
