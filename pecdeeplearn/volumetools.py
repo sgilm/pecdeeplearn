@@ -185,10 +185,21 @@ class Volume:
             
         return mri_slice_data, seg_slice_data
 
-    def show_slice(self, slice_index):
+    def show_slice(self, slice_index, slice_type='both'):
         """Show mri and seg data for a particular slice as a picture."""
-        for slice_data in self.get_slice(slice_index):
-            scipy.misc.toimage(slice_data).show()
+        mri_slice_data, seg_slice_data = self.get_slice(slice_index)
+        if slice_type == 'mri':
+            image_data = mri_slice_data
+        elif slice_type == 'seg':
+            image_data = mri_slice_data
+        elif slice_type == 'both':
+            seg_indices = np.nonzero(seg_slice_data)
+            mri_slice_data[seg_indices] = np.amax(mri_slice_data)
+            image_data = mri_slice_data
+        else:
+            raise Exception('Unrecognised slice type.')
+
+        scipy.misc.toimage(image_data).show()
 
     def __getitem__(self, indices):
         """Define volume slicing behaviour."""
