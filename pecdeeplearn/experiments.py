@@ -4,6 +4,8 @@ import features
 import numpy as np
 import maps
 import nolearn.lasagne
+import datapath
+import os
 
 
 def first(train=True):
@@ -21,90 +23,42 @@ def first(train=True):
         feature_function=lambda volume, point:
             features.patch(volume, point, kernel_shape)
     )
-    # ext.add_feature(
-    #     feature_name='intensity_mean',
-    #     feature_function=lambda volume, point:
-    #         features.intensity_mean(volume, point, kernel_shape)
-    # )
-    # ext.add_feature(
-    #     feature_name='sternal_angle',
-    #     feature_function=lambda volume, point:
-    #         features.landmark_displacement(volume, point, 'sternal_angle')
-    # )
 
-    map = maps.segmentation_map(volumes)
+    seg_map = maps.segmentation_map(volumes)
     batch_size = 100
 
-    net = NeuralNet(
+    net = nolearn.lasagne.NeuralNet(
         layers=[  # three layers: one hidden layer
-            ('input', layers.InputLayer),
-            ('hidden', layers.DenseLayer),
-            ('output', layers.DenseLayer),
+            ('input', lasagne.layers.InputLayer),
+            ('hidden', lasagne.layers.DenseLayer),
+            ('output', lasagne.layers.DenseLayer),
         ],
         # layer parameters:
         input_shape=(None, 169),  # 96x96 input pixels per batch
         hidden_num_units=100,  # number of units in hidden layer
-        output_nonlinearity=sigmoid,
+        output_nonlinearity=lasagne.nonlinearities.sigmoid,
         output_num_units=1,
 
         # optimization method:
-        update=nesterov_momentum,
+        update=lasagne.updates.nesterov_momentum,
         update_learning_rate=0.001,
         update_momentum=0.9,
 
-        regression=False,
-        # flag to indicate we're dealing with regression problem
         max_epochs=2,  # we want to train this many epochs
         verbose=1,
     )
 
-    # # Create Theano variables for input and target minibatch.
-    # patch_var = T.tensor3('patch', dtype='float64')
-    # intensity_var = T.matrix('intensity', dtype='float64')
-    # sternal_var = T.matrix('sternal', dtype='float64')
-    # target_var = T.vector('y', dtype='int64')
-
-    # # Create loss function.
-    # prediction = lasagne.layers.get_output(network)
-    # loss = lasagne.objectives.categorical_crossentropy(prediction, target_var)
-    # loss = loss.mean() + \
-    #        1e-4 * lasagne.regularization.regularize_network_params(
-    #            network, lasagne.regularization.l2)
-    #
-    # # Create parameter update expressions.
-    # params = lasagne.layers.get_all_params(network, trainable=True)
-    # updates = lasagne.updates.nesterov_momentum(loss, params,
-    #                                             learning_rate=0.01,
-    #                                             momentum=0.9)
-    #
-    # # Compile training function to update parameters and return training loss.
-    # train_fn = theano.function([input_var, target_var], loss, updates=updates)
-
-    for volume in volumes[0:1]:
+    for volume in volumes[0:-1]:
         ext.set_volume(volume)
-        for input_batch, output_batch, _ in ext.iterate(batch_size, point_map=map):
-            # output_batch = output_batch.reshape((batch_size, 1))
-            X = input_batch['patch'].reshape(100, 169).astype(np.float32)
-            output_batch = output_batch.astype(np.int32)
-            net.fit(X, output_batch)
+        for input_batch, output_batch, _ in ext.iterate(batch_size, point_map=seg_map):
+            net.fit(input_batch, output_batch)
 
-    weights = lasagne.layers.get_all_param_values(network)
-    np.save('weights', weights)
+    ext.set_volume(volumes[-1])
 
-    # Use trained network for predictions.
-    test_prediction = lasagne.layers.get_output(network, deterministic=True)
-    predict = theano.function([input_var], T.argmax(test_prediction, axis=1))
-
-    ext.volume = volumes[-1]
-
-    test_volume = ext.prediction(predict, map)
-
-    for i in range(10):
-        scipy.misc.toimage(ext.volume.seg_data[150 + i]).show()
-        scipy.misc.toimage(test_volume[150 + i]).show()
+    test_volume = ext.predict(net)
 
 
-def second():
+def second(train=True):
 
     volume_list = volumetools.list_volumes()
     volumes = [volumetools.load_volume(volume) for volume in volume_list]
@@ -186,7 +140,164 @@ def second():
     predicted_volume.show_slice(0)
 
 
-def third():
+def third(train=True):
+
+    # List and load all volumes, then switch them to the axial orientation.
+    volume_list = volumetools.list_volumes()
+    volumes = [volumetools.load_volume(volume) for volume in volume_list]
+    for volume in volumes:
+        volume.switch_plane('axial')
+
+    # Take a slice corresponding to the location of the left nipple.
+    volumes = [volume[int(volume.landmarks['Left nipple'][0])]
+               for volume in volumes]
+
+    # Create an Extractor.
+    ext = volumetools.Extractor()
+
+    # Add features.
+    ext.add_feature(
+        feature_name='local_patch',
+        feature_function=lambda volume, point:
+        features.patch(volume, point, [1, 25, 25])
+    )
+    ext.add_feature(
+        feature_name='context_patch',
+        feature_function=lambda volume, point:
+        features.scaled_patch(volume, point, [1, 50, 50], [1, 25, 25])
+    )
+    ext.add_feature(
+        feature_name='sternal_angle',
+        feature_function=lambda volume, point:
+            features.landmark_displacement(volume, point, 'Sternal angle')
+    )
+    ext.add_feature(
+        feature_name='left_nipple',
+        feature_function=lambda volume, point:
+        features.landmark_displacement(volume, point, 'Left nipple')
+    )
+    ext.add_feature(
+        feature_name='right_nipple',
+        feature_function=lambda volume, point:
+        features.landmark_displacement(volume, point, 'Right nipple')
+    )
+
+    # Create the net.
+    net = nolearn.lasagne.NeuralNet(
+        layers = [
+
+            # Layers for the local patch.
+            (lasagne.layers.InputLayer,
+             {'name': 'local_patch', 'shape': (None, 1, 25, 25)}),
+            (lasagne.layers.Conv2DLayer,
+             {'name': 'local_patch_conv1', 'num_filters': 150,
+              'filter_size': (5, 5)}),
+            (lasagne.layers.MaxPool2DLayer,
+             {'name': 'local_patch_pool1', 'pool_size': (2, 2)}),
+            (lasagne.layers.Conv2DLayer,
+             {'name': 'local_patch_conv2', 'num_filters': 150,
+              'filter_size': (3, 3)}),
+            (lasagne.layers.MaxPool2DLayer,
+             {'name': 'local_patch_pool2', 'pool_size': (2, 2)}),
+            (lasagne.layers.DenseLayer,
+             {'name': 'local_patch_dense1', 'num_units': 150}),
+
+            # Layers for the context patch.
+            (lasagne.layers.InputLayer,
+             {'name': 'context_patch', 'shape': (None, 1, 25, 25)}),
+            (lasagne.layers.Conv2DLayer,
+             {'name': 'context_patch_conv1', 'num_filters': 150,
+              'filter_size': (5, 5)}),
+            (lasagne.layers.MaxPool2DLayer,
+             {'name': 'context_patch_pool1', 'pool_size': (2, 2)}),
+            (lasagne.layers.Conv2DLayer,
+             {'name': 'context_patch_conv2', 'num_filters': 150,
+              'filter_size': (3, 3)}),
+            (lasagne.layers.MaxPool2DLayer,
+             {'name': 'context_patch_pool2', 'pool_size': (2, 2)}),
+            (lasagne.layers.DenseLayer,
+             {'name': 'context_patch_dense1', 'num_units': 150}),
+
+            # Layers for the landmark displacements.
+            (lasagne.layers.InputLayer,
+             {'name': 'sternal_angle', 'shape': (None, 3)}),
+            (lasagne.layers.DenseLayer,
+             {'name': 'sternal_angle_dense1', 'num_units': 75}),
+            (lasagne.layers.InputLayer,
+             {'name': 'left_nipple', 'shape': (None, 3)}),
+            (lasagne.layers.DenseLayer,
+             {'name': 'left_nipple_dense1', 'num_units': 75}),
+            (lasagne.layers.InputLayer,
+             {'name': 'right_nipple', 'shape': (None, 3)}),
+            (lasagne.layers.DenseLayer,
+             {'name': 'right_nipple_dense1', 'num_units': 75}),
+
+            # Layers for concatenation and output.
+            (lasagne.layers.ConcatLayer,
+             {'incomings': ['local_patch_dense1', 'context_patch_dense1',
+                            'sternal_angle_dense1', 'left_nipple_dense1',
+                            'right_nipple_dense1']}),
+            (lasagne.layers.DenseLayer,
+             {'name': 'output', 'num_units': 2,
+              'nonlinearity': lasagne.nonlinearities.softmax}),
+
+        ],
+
+        # Define learning parameters.
+        update=lasagne.updates.nesterov_momentum,
+        update_learning_rate=0.0001,
+        update_momentum=0.9,
+
+        # Define training parameters.
+        max_epochs=50,
+        verbose=True
+    )
+
+    # Define the batch size.
+    batch_size = 1000
+
+    if train:
+
+        # Train on all but the last two volumes, and use a half-half map.
+        for index, volume in enumerate(volumes[0:-2]):
+            ext.set_volume(volume)
+            for input_batch, output_batch, _ in ext.iterate(
+                    batch_size, point_map=maps.half_half_map(volume)):
+                net.fit(input_batch, output_batch)
+            print('\nFinished training on volume #' + str(index) + '.\n')
+
+        print('Finished training.')
+
+        # Save the parameters for later use.
+        net.save_params_to(os.path.join(datapath.get(),
+                                        'networks',
+                                        'third'))
+
+    else:
+
+        # Load and initialise the net for predictions.
+        net.load_params_from(os.path.join(datapath.get(),
+                                          'networks',
+                                          'third'))
+        net.initialize()
+
+
+    # Test on the reserved second to last volume.
+    testing_volume = volumes[-2]
+    ext.set_volume(testing_volume)
+
+    # Perform the prediction.
+    print('Performing test segmentation.')
+    predicted_volume = ext.predict(net, batch_size=batch_size)
+    print('Segmentation complete.')
+
+    # Save predicted volume for analysis.
+    volumetools.pickle_volume(predicted_volume, 'third')
+    testing_volume.show_slice(0)
+    predicted_volume.show_slice(0)
+
+
+def fourth(train=True):
 
     # List and load all volumes, then switch them to the axial orientation.
     volume_list = volumetools.list_volumes()
@@ -222,6 +333,36 @@ def third():
         feature_function=lambda volume, point:
         features.landmark_displacement(volume, point, 'Right nipple')
     )
+    ext.add_feature(
+        feature_name='back_skin',
+        feature_function=lambda volume, point:
+        features.landmark_displacement(volume, point, 'Back skin')
+    )
+    ext.add_feature(
+        feature_name='left_humerus_ball',
+        feature_function=lambda volume, point:
+        features.landmark_displacement(volume, point, 'Left humerus ball')
+    )
+    ext.add_feature(
+        feature_name='right_humerus_ball',
+        feature_function=lambda volume, point:
+        features.landmark_displacement(volume, point, 'Right humerus ball')
+    )
+    ext.add_feature(
+        feature_name='spinal_cord',
+        feature_function=lambda volume, point:
+        features.landmark_displacement(volume, point, 'Spinal cord')
+    )
+    ext.add_feature(
+        feature_name='sternal_angle_skin',
+        feature_function=lambda volume, point:
+        features.landmark_displacement(volume, point, 'Sternal angle skin')
+    )
+    ext.add_feature(
+        feature_name='Sternum superior',
+        feature_function=lambda volume, point:
+        features.landmark_displacement(volume, point, 'Sternum superior')
+    )
 
     # Create the net.
     net = nolearn.lasagne.NeuralNet(
@@ -229,22 +370,38 @@ def third():
 
             # Layers for the patch.
             (lasagne.layers.InputLayer, {'name': 'patch', 'shape': tuple([None] + kernel_shape)}),
-            (lasagne.layers.Conv2DLayer, {'name': 'patch_conv1', 'num_filters': 100, 'filter_size': (5, 5)}),
+            (lasagne.layers.Conv2DLayer, {'name': 'patch_conv1', 'num_filters': 200, 'filter_size': (5, 5)}),
             (lasagne.layers.MaxPool2DLayer, {'name': 'patch_pool1', 'pool_size': (2, 2)}),
-            (lasagne.layers.Conv2DLayer, {'name': 'patch_conv2', 'num_filters': 100, 'filter_size': (3, 3)}),
+            (lasagne.layers.Conv2DLayer, {'name': 'patch_conv2', 'num_filters': 150, 'filter_size': (3, 3)}),
             (lasagne.layers.MaxPool2DLayer, {'name': 'patch_pool2', 'pool_size': (2, 2)}),
-            (lasagne.layers.DenseLayer, {'name': 'patch_dense1', 'num_units': 100}),
+            (lasagne.layers.DenseLayer, {'name': 'patch_dense1', 'num_units': 150}),
 
             # Layers for the landmark displacements.
             (lasagne.layers.InputLayer, {'name': 'sternal_angle', 'shape': (None, 3)}),
-            (lasagne.layers.DenseLayer, {'name': 'sternal_angle_dense1', 'num_units': 50}),
+            (lasagne.layers.DenseLayer, {'name': 'sternal_angle_dense1', 'num_units': 25}),
             (lasagne.layers.InputLayer, {'name': 'left_nipple', 'shape': (None, 3)}),
-            (lasagne.layers.DenseLayer, {'name': 'left_nipple_dense1', 'num_units': 50}),
+            (lasagne.layers.DenseLayer, {'name': 'left_nipple_dense1', 'num_units': 25}),
             (lasagne.layers.InputLayer, {'name': 'right_nipple', 'shape': (None, 3)}),
-            (lasagne.layers.DenseLayer, {'name': 'right_nipple_dense1', 'num_units': 50}),
+            (lasagne.layers.DenseLayer, {'name': 'right_nipple_dense1', 'num_units': 25}),
+            (lasagne.layers.InputLayer, {'name': 'back_skin', 'shape': (None, 3)}),
+            (lasagne.layers.DenseLayer, {'name': 'back_skin_dense1', 'num_units': 25}),
+            (lasagne.layers.InputLayer, {'name': 'left_humerus_ball', 'shape': (None, 3)}),
+            (lasagne.layers.DenseLayer, {'name': 'left_humerus_ball_dense1', 'num_units': 25}),
+            (lasagne.layers.InputLayer, {'name': 'right_humerus_ball', 'shape': (None, 3)}),
+            (lasagne.layers.DenseLayer, {'name': 'right_humerus_ball_dense1', 'num_units': 25}),
+            (lasagne.layers.InputLayer, {'name': 'spinal_cord', 'shape': (None, 3)}),
+            (lasagne.layers.DenseLayer, {'name': 'spinal_cord_dense1', 'num_units': 25}),
+            (lasagne.layers.InputLayer, {'name': 'sternal_angle_skin', 'shape': (None, 3)}),
+            (lasagne.layers.DenseLayer, {'name': 'sternal_angle_skin_dense1', 'num_units': 25}),
+            (lasagne.layers.InputLayer, {'name': 'sternum_superior', 'shape': (None, 3)}),
+            (lasagne.layers.DenseLayer, {'name': 'sternum_superior_dense1', 'num_units': 25}),
 
             # Layers for concatenation and output.
-            (lasagne.layers.ConcatLayer, {'incomings': ['patch_dense1', 'sternal_angle_dense1', 'left_nipple_dense1', 'right_nipple_dense1']}),
+            (lasagne.layers.ConcatLayer, {'incomings': ['patch_dense1', 'sternal_angle_dense1',
+                                                        'left_nipple_dense1', 'right_nipple_dense1',
+                                                        'back_skin_dense1', 'left_humerus_ball_dense1',
+                                                        'right_humerus_ball_dense1', 'spinal_cord_dense1',
+                                                        'sternal_angle_skin_dense1', 'sternum_superior_dense1']}),
             (lasagne.layers.DenseLayer, {'name': 'output', 'num_units': 2, 'nonlinearity': lasagne.nonlinearities.softmax}),
 
         ],
@@ -255,33 +412,46 @@ def third():
         update_momentum=0.9,
 
         # Define training parameters.
-        max_epochs=100,
+        max_epochs=50,
         verbose=True
     )
 
     # Define the batch size.
-    batch_size = 100
+    batch_size = 1000
 
-    # Train on all but the last volume, and use a half-half map.
-    for volume in volumes[0:-1]:
-        ext.set_volume(volume)
-        for input_batch, output_batch, _ \
-                in ext.iterate(batch_size, point_map=maps.half_half_map(volume)):
-            net.fit(input_batch, output_batch)
+    if train:
 
-    print('Finished training.')
+        # Train on all but the last two volumes, and use a half-half map.
+        for index, volume in enumerate(volumes[0:-2]):
+            print('\nStarting volume #' + str(index) + '\n')
+            ext.set_volume(volume)
+            for input_batch, output_batch, _ \
+                    in ext.iterate(batch_size, point_map=maps.half_half_map(volume)):
+                net.fit(input_batch, output_batch)
 
-    # Test on the reserved final volume.
-    testing_volume = volumes[-1]
+        print('Finished training.')
+
+        # Save the parameters for later use.
+        net.save_params_to(os.path.join(datapath.get(), 'networks', 'thirdmorefilters'))
+
+    else:
+
+        # Load and initialise the net for predictions.
+        net.load_params_from(os.path.join(datapath.get(), 'networks', 'thirdmorefilter'))
+        net.initialize()
+
+
+    # Test on the reserved second to last volume.
+    testing_volume = volumes[-2]
     ext.set_volume(testing_volume)
 
     # Perform the prediction.
     print('Performing test segmentation...')
-    predicted_volume = ext.predict(net)
+    predicted_volume = ext.predict(net, batch_size=batch_size)
     print('Segmentation complete.')
 
     # Save predicted volume for analysis.
-    volumetools.pickle_volume(predicted_volume, 'test')
+    volumetools.pickle_volume(predicted_volume, 'thirdmorefilters')
     testing_volume.show_slice(0)
     predicted_volume.show_slice(0)
 
