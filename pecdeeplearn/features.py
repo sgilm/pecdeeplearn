@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.ndimage.interpolation
 
 
 def patch(volume, point, kernel_shape):
@@ -52,10 +53,20 @@ def patch(volume, point, kernel_shape):
     return np.array(patch_data).reshape(patch_shape)
 
 
+def scaled_patch(volume, point, source_kernel, target_kernel):
+    """Get a patch of specified size and resample it to a different size."""
+
+    # Get the sacle factors and extract the patch.
+    scale_factors = np.array(target_kernel) / np.array(source_kernel)
+    voxel_patch = patch(volume, point, source_kernel)
+
+    return scipy.ndimage.interpolation.zoom(voxel_patch, scale_factors)
+
+
 def intensity_mean(volume, point, kernel_shape):
     """Get the mean intensity of points within a patch of specified shape."""
 
-    # Get the patch form the volume.
+    # Get the patch from the volume.
     voxel_patch = patch(volume, point, kernel_shape)
 
     return np.mean(voxel_patch)
@@ -81,3 +92,14 @@ def landmark_displacement(volume, point, landmark_name):
     coordinate_array = np.array(point)
 
     return volume.landmarks[landmark_name] - coordinate_array
+
+
+if __name__ == '__main__':
+    import volumetools
+    # List and load all volumes, then switch them to the axial orientation.
+    volume_list = volumetools.list_volumes()
+    volumes = [volumetools.load_volume(volume) for volume in volume_list]
+    for volume in volumes:
+        volume.switch_plane('axial')
+
+    data = scaled_patch(volumes[0], (120, 120, 120), [1, 50, 50], [1, 50, 15])
