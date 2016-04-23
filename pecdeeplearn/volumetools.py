@@ -9,7 +9,7 @@ import copy
 
 
 def list_volumes():
-    """List the names of available volumes, that have the required data."""
+    """List the names of available volumes that have the required data."""
 
     # Get the path to the data.
     data_path = datapath.get()
@@ -124,9 +124,15 @@ class Volume:
         seg_dims_to_squeeze = tuple(range(3, len(seg_data.shape)))
         self.mri_data = np.squeeze(mri_data, axis=mri_dims_to_squeeze)
         self.seg_data = np.squeeze(seg_data, axis=seg_dims_to_squeeze)
+
+        # Standardise the mri data.
+        self.mri_data = self.mri_data - np.mean(self.mri_data)
+        self.mri_data /= np.std(self.mri_data)
+
+        # Record landmarks.
         self.landmarks = landmarks
 
-        # Check the first three dimensions are consistent.
+        # Check the dimensions are consistent.
         if self.mri_data.shape != self.seg_data.shape:
             raise Exception('Data dimensions are inconsistent.')
 
@@ -163,7 +169,7 @@ class Volume:
                 swap_axes(self, 1, 2)
 
         # Update the shape and plane of the volume.
-        self.shape = self.mri_data.shape[:3]
+        self.shape = self.mri_data.shape
         self.plane = plane
 
     def get_slice(self, slice_index):
@@ -187,25 +193,34 @@ class Volume:
 
     def show_slice(self, slice_index, slice_type='both'):
         """Show mri and seg data for a particular slice as a picture."""
+
+        # Get the data for both mri and seg.
         mri_slice_data, seg_slice_data = self.get_slice(slice_index)
+
+        # Set the image data according to the specified slice type to show.
         if slice_type == 'mri':
             image_data = mri_slice_data
         elif slice_type == 'seg':
             image_data = mri_slice_data
         elif slice_type == 'both':
+
+            # Set the intensity of the segmented voxels to be the maximum
+            # intensity of the mri (scipy.misc.toimage displays the maximum
+            # intensity as white and 0 as black).
             seg_indices = np.nonzero(seg_slice_data)
             mri_slice_data[seg_indices] = np.amax(mri_slice_data)
             image_data = mri_slice_data
         else:
             raise Exception('Unrecognised slice type.')
 
+        # Display the slice.
         scipy.misc.toimage(image_data).show()
 
     def __getitem__(self, indices):
         """Define volume slicing behaviour."""
 
-        # If the indices are not a valid iterable, put them in a list to
-        # process.
+        # If the indices are not a valid iterable, put them in a list for
+        # processing.
         try:
             _ = (e for e in indices)
         except TypeError:
@@ -221,12 +236,13 @@ class Volume:
         new_origin = []
         for index in indices:
 
-            # Create a slice form an integer.
+            # Create a slice from an integer.
             if isinstance(index, int):
                 processed_indices.append([index])
                 new_origin.append(index)
 
-            # If the index is already a slice, extract the starting element.
+            # If the index is already a slice, extract the starting element for
+            # identifying the new origin.
             elif isinstance(index, slice):
                 processed_indices.append(index)
                 new_origin.append(index.start)
@@ -264,6 +280,7 @@ class Extractor:
         volume (Volume): a volume that the extractor will iterate over.
 
     """
+
     def __init__(self):
         self.features = {}
         self.feature_sizes = {}
@@ -288,7 +305,7 @@ class Extractor:
 
         # Test that a volume is present.
         if not self.volume:
-            Exception('A volume must be loaded to find feature sizes.')
+            Exception('A volume must be set to find feature sizes.')
 
         # Construct lists for iterating through all points.
         ranges_to_iterate = [range(size) for size in self.volume.shape]
@@ -482,8 +499,12 @@ class Extractor:
                   copy.deepcopy(point_batch)
 
     def predict(self, net, batch_size=1000, point_map=None):
+        """Return a copy of the current volume, with predicted segmentation."""
+
+        # Preallocate the array for the predicted segmentation.
         pred_seg = np.zeros(self.volume.shape)
 
+        # Iterate through to predict values, and record.
         for input, _, points in self.iterate(batch_size, point_map=point_map):
             predicted_data = net.predict(input)
             point_indices = tuple(zip(*points))
