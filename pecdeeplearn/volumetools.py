@@ -33,13 +33,13 @@ def list_volumes():
         seg_volumes.append(volume)
 
     # Loop through and list volumes with landmarks.
-    land_volumes = []
+    landmark_volumes = []
     for volume in next(os.walk(os.path.join(data_path, 'landmarks')))[1]:
-        land_volumes.append(volume)
+        landmark_volumes.append(volume)
 
     # Valid volumes must have mri, segmentation and landmark data.
     volumes = [volume for volume in seg_volumes
-               if volume in mri_volumes and volume in land_volumes]
+               if volume in mri_volumes and volume in landmark_volumes]
 
     return volumes
 
@@ -58,7 +58,15 @@ def load_volume(volume_name):
     mri = nibabel.load(os.path.join(data_path, 'mris', mri_filename))
     seg = nibabel.load(os.path.join(data_path, 'segmentations', seg_filename))
 
-    # Loop through landmarks to build and dictionary.
+    # Retrieve data.
+    volume_data = [mri.get_data(), seg.get_data()]
+
+    # Swap axes of data into the best orientation for viewing
+    # ([axial][coronal][sagittal]).
+    for i in range(len(volume_data)):
+        volume_data[i] = np.swapaxes(volume_data[i], 0, 2)
+
+    # Loop through landmarks to build a dictionary.
     landmarks = {}
     landmark_path = os.path.join(data_path, 'landmarks', volume_name)
     for filename in os.listdir(landmark_path):
@@ -71,24 +79,39 @@ def load_volume(volume_name):
             name = landmark_dict['name']
             data = landmark_dict['data']['default']
 
-            # Swap coordinates to be consistent with the sagittal orientation
+            # Swap coordinates to be consistent with the axial orientation
             # of the mri and segmentation data.
             data[0], data[1] = data[1], data[0]
+            data[0], data[2] = data[2], data[0]
 
             # Add to dictionary.
             landmarks[name] = data
 
-    return Volume(mri.get_data(), seg.get_data(), landmarks)
+    # Create the volume.
+    volume = Volume(volume_data[0],
+                    volume_data[1],
+                    copy.deepcopy(landmarks),
+                    'acs')
+
+    # Mirror the volume in the sagittal plane and reassign landmarks so that it
+    # is consistent.
+    volume.mirror('s')
+    volume.landmarks = landmarks
+
+    # One final mirror to put the data in the most natural shape.
+    volume.mirror('a')
+
+    return volume
 
 
 def pickle_volume(volume, filename):
-    full_filename = os.path.join(datapath.get(), 'saved', filename + '.pkl')
+    full_filename = os.path.join(datapath.get(), 'saved', filename)
     with open(full_filename, 'wb') as f:
         pickle.dump(volume, f, -1)
 
 
 def unpickle_volume(filename):
-    full_filename = os.path.join(datapath.get(), 'saved', filename + '.pkl')
+    full_filename = os.path.join(datapath.get(), 'saved', filename)
     with open(full_filename, 'rb') as f:
         volume = pickle.load(f)
     return volume
@@ -100,24 +123,26 @@ class Volume:
 
     Args
         mri_data (numpy.memmap): a pointer to a set of mri data, with single
-            voxel intensity values that range from 0 to 255.
+            voxel intensity values.
         seg_data (numpy.memmap): a pointer to a set of segmentation data, with
             binary voxels.
         landmarks (dict): contains landmark names as keys and 3 element
             coordinate arrays as values.
+        orientation (str): a 3 element string containing the chars a, c and s
+            which gives the order of the axial, coronal and sagittal axes in
+            the data arrays.
 
     Attributes
-        mri_data (numpy.memmap): equals arg
-        seg_data (numpy.memmap): equals arg
-        landmarks (dict): equals arg
-        shape (tuple): gives the dimensions of the volume arrays
-        plane (str): the orientation of the data sets in their first indexing
-            dimension.  E.g. if self.plane == 'axial', then self.mri_data[100]
-            takes an axial slice.  Can be 'sagittal', 'axial', or 'coronal'.
+        mri_data (numpy.memmap): equals arg.
+        seg_data (numpy.memmap): equals arg.
+        landmarks (dict): equals arg.
+        orientation (str): equals arg.
+        shape (tuple): gives the dimensions of the volume.  Should be
+            consistent between mri and seg data
         
     """
     
-    def __init__(self, mri_data, seg_data, landmarks, plane='sagittal'):
+    def __init__(self, mri_data, seg_data, landmarks, orientation):
 
         # Squeeze to clean up data with unwanted singleton dimensions.
         mri_dims_to_squeeze = tuple(range(3, len(mri_data.shape)))
@@ -129,48 +154,54 @@ class Volume:
         self.mri_data = self.mri_data - np.mean(self.mri_data)
         self.mri_data /= np.std(self.mri_data)
 
-        # Record landmarks.
+        # Record landmarks and orientation.
         self.landmarks = landmarks
+        self.orientation = orientation
 
         # Check the dimensions are consistent.
         if self.mri_data.shape != self.seg_data.shape:
             raise Exception('Data dimensions are inconsistent.')
 
-        # If they are, set this as the shape of the volume.
+        # If they are consistent, set this as the shape of the volume.
         self.shape = self.mri_data.shape
 
-        # The default orientation when data is read from file is 'sagittal'.
-        self.plane = plane
+    def _swap_axes(self, i, j):
+        """Swaps the axes of all data in the volume."""
 
-    def switch_plane(self, plane):
-        """Switch the orientation of the data."""
+        # Treat each piece of data separately.
+        self.mri_data = np.swapaxes(self.mri_data, i, j)
+        self.seg_data = np.swapaxes(self.seg_data, i, j)
+        for point in self.landmarks.values():
+            point[i], point[j] = point[j], point[i]
 
-        # Define a function to swap the axes of all data in the Volume.
-        def swap_axes(volume, i, j):
-            volume.mri_data = np.swapaxes(volume.mri_data, i, j)
-            volume.seg_data = np.swapaxes(volume.seg_data, i, j)
-            for point in volume.landmarks.values():
-                point[i], point[j] = point[j], point[i]
+    def switch_orientation(self, new_orientation):
+        """
+        Switch the orientation of the data.
 
-        # Keep the planes to switch in an unordered collection.
-        switch = {plane, self.plane}
+        Args
+            new_orientation (str): a 3 element string giving a new order for
+                the axial, sagittal and coronal axes.
 
-        # Choose behaviour based on the planes to switch between.
-        if switch == {'sagittal', 'coronal'}:
-            swap_axes(self, 0, 1)
-        elif switch == {'sagittal', 'axial'}:
-            swap_axes(self, 0, 2)
-        elif switch == {'axial', 'coronal'}:
-            if plane == 'axial':
-                swap_axes(self, 1, 2)
-                swap_axes(self, 0, 1)
-            else:
-                swap_axes(self, 0, 1)
-                swap_axes(self, 1, 2)
+        """
 
-        # Update the shape and plane of the volume.
+        # Check the input is valid.
+        if len(new_orientation) != 3:
+            raise Exception('Input should be 3 element string of a, c and s.')
+
+        # Create a list for working and loop through new orientation.
+        updated = list(self.orientation)
+        for i, plane in enumerate(new_orientation):
+
+            # Get the index of the axes to swap with.
+            j = updated.index(plane)
+
+            # Swap the data and working orientation.
+            self._swap_axes(i, j)
+            updated[i], updated[j] = updated[j], updated[i]
+
+        # Set the new orientation and shape.
+        self.orientation = new_orientation
         self.shape = self.mri_data.shape
-        self.plane = plane
 
     def get_slice(self, slice_index):
         """
@@ -215,6 +246,32 @@ class Volume:
 
         # Display the slice.
         scipy.misc.toimage(image_data).show()
+
+    def mirror(self, mirror_planes):
+        """Reflect a volume in the specified planes.
+
+        Args
+            mirror_planes (str): contains any of the characters a, c, and s -
+                which specify the planes to mirror.  For example,
+                mirror_planes = 'as' will mirror the volume in the axial and
+                sagittal planes, but not the coronal plane.
+
+        """
+
+        # Loop through each axis.
+        for i, plane in enumerate(self.orientation):
+            if plane in mirror_planes:
+
+                # Swap data so the axis to be reversed is the first dimension.
+                # Then reverse it and swap back.
+                self._swap_axes(0, i)
+                self.mri_data = self.mri_data[::-1]
+                self.seg_data = self.seg_data[::-1]
+                self._swap_axes(0, i)
+
+                # Update the landmark coordinates.
+                for point in self.landmarks.values():
+                    point[i] = (self.shape[i] - 1) - point[i]
 
     def __getitem__(self, indices):
         """Define volume slicing behaviour."""
@@ -263,7 +320,7 @@ class Volume:
         return Volume(self.mri_data[processed_indices],
                       self.seg_data[processed_indices],
                       new_landmarks,
-                      plane=self.plane)
+                      self.orientation)
 
 
 class Extractor:
@@ -510,9 +567,7 @@ class Extractor:
             point_indices = tuple(zip(*points))
             pred_seg[point_indices] = predicted_data
 
-        return Volume(self.volume.mri_data, pred_seg, self.volume.landmarks)
-
-
-if __name__ == '__main__':
-    volume = load_volume(list_volumes()[0])
-    volume.switch_plane('axial')
+        return Volume(self.volume.mri_data,
+                      pred_seg,
+                      self.volume.landmarks,
+                      self.volume.orientation)
