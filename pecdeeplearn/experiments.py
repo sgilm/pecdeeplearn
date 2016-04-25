@@ -330,6 +330,11 @@ def fourth(train=True):
     volumes = [volume[int(volume.landmarks['Left nipple'][0])]
                for volume in volumes]
 
+    # Strip away volumes with little segmentation data.
+    min_seg_points = 100
+    volumes = [volume for volume in volumes
+               if np.sum(volume.seg_data) > min_seg_points]
+
     # Create training maps.
     point_maps = [extraction.half_half_map(volume) for volume in volumes]
 
@@ -435,13 +440,13 @@ def fourth(train=True):
     )
 
     # Define the batch size.
-    batch_size = 1000
+    batch_size = 10000
 
     if train:
 
         # Train on all but the last two volumes, and use a half-half map.
-        for input_batch, output_batch, _ in ext.iterate_multiple(
-                volumes, point_maps, batch_size):
+        for input_batch, output_batch in ext.iterate_multiple(
+                volumes[:-1], point_maps[:-1], batch_size):
             net.fit(input_batch, output_batch)
 
         print('Finished training.')
@@ -462,8 +467,8 @@ def fourth(train=True):
         net.layers_['local_patch_conv1']
     ).show()
 
-    # Test on the reserved second to last volumes.
-    test_volume = volumes[-2]
+    # Test on the reserved last volume.
+    test_volume = volumes[-1]
 
     # Perform the prediction.
     print('Performing test segmentation.')
@@ -474,8 +479,3 @@ def fourth(train=True):
     utils.pickle_volume(predicted_volume, 'fourth.pkl')
     test_volume.show_slice(0)
     predicted_volume.show_slice(0)
-
-
-if __name__ == '__main__':
-
-    fourth(train=True)
