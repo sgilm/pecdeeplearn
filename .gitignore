@@ -5,6 +5,3 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Network weight files
-*.pyn
