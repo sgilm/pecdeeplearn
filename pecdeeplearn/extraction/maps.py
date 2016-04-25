@@ -89,6 +89,10 @@ def half_half_map(volume):
     # Count the number of segmented voxels.
     num_segs = np.sum(volume.seg_data)
 
+    # Return a blank map if no voxels are segmented.
+    if num_segs == 0:
+        return np.zeros(volume.shape, dtype='bool')
+
     # Generate the same number of random points that are not segmented.
     non_seg_points = set()
     while len(non_seg_points) < num_segs:
