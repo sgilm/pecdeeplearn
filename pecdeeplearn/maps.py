@@ -3,7 +3,7 @@ import numpy as np
 
 def probability_bins(volumes, num_bins=25, scale=None):
     """
-    Create intensity bins and probabilities a voxel of a bin is segmented.
+    Create intensity bins and probabilities that a voxel in a bin is segmented.
 
     Args
         volumes (list): a list of Volume objects that are to be used for
@@ -29,7 +29,7 @@ def probability_bins(volumes, num_bins=25, scale=None):
     # Get the total number of voxels in each bin, and the bin boundaries.
     voxel_counts, bins = np.histogram(all_mri_data, bins=num_bins)
 
-    # Create a corresponding volume with each element being a bin label.
+    # Create a corresponding volumes with each element being a bin label.
     voxel_bin_indices = np.digitize(all_mri_data, bins)
 
     # Strip away only those elements that are segmented.
@@ -52,27 +52,44 @@ def probability_bins(volumes, num_bins=25, scale=None):
 
 
 def probability_map(volume, bins, prob_bins):
+    """Make a random training map from the likelihood that a voxel is a pec."""
+
     # Increase end of last bin so that the voxel of maximum intensity across
     # all volumes used to create the map gets put into the final bin.
     bins[-1] += 1
+
+    # Make a random volumes to use for selecting the voxels to train on.
     random_volume = np.random.random(volume.shape)
+
+    # Assign each voxel its bin number.
     voxel_bin_ind = np.digitize(volume.mri_data, bins)
+
+    # Create a volumes where each voxel is replaced by the probability that it
+    # is segmented (based only on its intensity value).
     prob_map = prob_bins[voxel_bin_ind.flatten() - 1].reshape(volume.shape)
+
+    # Threshold according to random volumes and voxel probabilities.
     prob_map[prob_map < random_volume] = 0
 
     return prob_map
 
 
 def segmentation_map(volumes):
+    """Create a training map for any segmented voxel of a list of volumes."""
+
+    # Count the number of times each voxel is segmented.
     counts = sum([volume.seg_data for volume in volumes])
 
     return counts.astype(np.bool)
 
 
 def half_half_map(volume):
-    """Create half-half training map."""
+    """Create training map with equal # segmented and non-segmented voxels."""
 
+    # Count the number of segmented voxels.
     num_segs = np.sum(volume.seg_data)
+
+    # Generate the same number of random points that are not segmented.
     non_seg_points = set()
     while len(non_seg_points) < num_segs:
         point = []
@@ -82,20 +99,19 @@ def half_half_map(volume):
         if volume.seg_data[point] != 1:
             non_seg_points.add(point)
 
+    # Create half-half map, starting with all segmented voxels.
     half_half = volume.seg_data.astype('bool')
 
+    # Convert list of points into tuple of axis indices.
     non_seg_indices = tuple(zip(*non_seg_points))
+
+    # Add to map.
     half_half[non_seg_indices] = True
 
     return half_half
 
 
-if __name__ == '__main__':
-    import volumetools as vt
-    volume = vt.load_volume(vt.list_volumes()[0])
-    volume.switch_plane('axial')
+def full_map(volume):
+    """Create a training map encompassing the whole of the input volume."""
 
-    half_half = half_half_map(volume)
-
-    import scipy.misc
-    scipy.misc.toimage(half_half[120]).show()
+    return np.ones(volume.shape)
