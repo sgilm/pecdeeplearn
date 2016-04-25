@@ -2,16 +2,14 @@ import lasagne
 import numpy as np
 import nolearn.lasagne
 import nolearn.lasagne.visualize
-
-from . import extraction
-from . import utils
+import pecdeeplearn as pdl
 
 
 def first():
 
     # List and load all volumes, then switch them to the axial orientation.
-    volume_list = utils.list_volumes()
-    volumes = [utils.load_volume(volume) for volume in volume_list]
+    volume_list = pdl.utils.list_volumes()
+    volumes = [pdl.utils.load_volume(volume) for volume in volume_list]
     for volume in volumes:
         volume.switch_orientation('acs')
 
@@ -20,14 +18,14 @@ def first():
                for volume in volumes]
 
     # Create an Extractor.
-    ext = extraction.Extractor()
+    ext = pdl.extraction.Extractor()
 
     # Add features.
     kernel_shape = [1, 13, 13]
     ext.add_feature(
         feature_name='patch',
         feature_function=lambda volume, point:
-            extraction.patch(volume, point, kernel_shape)
+        pdl.extraction.patch(volume, point, kernel_shape)
     )
 
     # Create net.
@@ -56,7 +54,7 @@ def first():
     )
 
     # Create map and define batch size.
-    seg_map = extraction.segmentation_map(volumes)
+    seg_map = pdl.extraction.segmentation_map(volumes)
     batch_size = 100
 
     # Iterate through and train.
@@ -77,8 +75,8 @@ def first():
 def second():
 
     # List and load all volumes, then switch them to the axial orientation.
-    volume_list = utils.list_volumes()
-    volumes = [utils.load_volume(volume) for volume in volume_list]
+    volume_list = pdl.utils.list_volumes()
+    volumes = [pdl.utils.load_volume(volume) for volume in volume_list]
     for volume in volumes:
         volume.switch_orientation('acs')
 
@@ -87,14 +85,14 @@ def second():
                for volume in volumes]
 
     # Create an Extractor.
-    ext = extraction.Extractor()
+    ext = pdl.extraction.Extractor()
 
     # Add features.
     kernel_shape = [1, 21, 21]
     ext.add_feature(
         feature_name='patch',
         feature_function=lambda volume, point:
-            extraction.patch(volume, point, kernel_shape)
+        pdl.extraction.patch(volume, point, kernel_shape)
     )
 
     # Create net.
@@ -134,7 +132,7 @@ def second():
     )
 
     # Create probability bins (for later creating training maps).
-    bins, prob_bins = extraction.probability_bins(volumes, scale=0.75)
+    bins, prob_bins = pdl.extraction.probability_bins(volumes, scale=0.75)
 
     # Define batch size.
     batch_size = 1000
@@ -144,7 +142,7 @@ def second():
 
     # Iterate through and train, making sure the batch is balanced.
     for volume in volumes[0:-2]:
-        prob_map = extraction.probability_map(volume, bins, prob_bins)
+        prob_map = pdl.extraction.probability_map(volume, bins, prob_bins)
         for input_batch, output_batch, _ in \
                 ext.iterate_single(volume, prob_map, batch_size):
             num_positives = np.count_nonzero(output_batch)
@@ -162,7 +160,7 @@ def second():
     print('Segmentation complete.')
 
     # Save predicted volumes.
-    utils.pickle_volume(predicted_volume, 'second.pkl')
+    pdl.utils.pickle_volume(predicted_volume, 'second.pkl')
 
     # Compare segmentations.
     test_volume.show_slice(0)
@@ -172,8 +170,8 @@ def second():
 def third(train=True):
 
     # List and load all volumes, then switch them to the axial orientation.
-    volume_list = utils.list_volumes()
-    volumes = [utils.load_volume(volume) for volume in volume_list]
+    volume_list = pdl.utils.list_volumes()
+    volumes = [pdl.utils.load_volume(volume) for volume in volume_list]
     for volume in volumes:
         volume.switch_orientation('acs')
 
@@ -182,33 +180,33 @@ def third(train=True):
                for volume in volumes]
 
     # Create an Extractor.
-    ext = extraction.Extractor()
+    ext = pdl.extraction.Extractor()
 
     # Add features.
     ext.add_feature(
         feature_name='local_patch',
         feature_function=lambda volume, point:
-        extraction.patch(volume, point, [1, 25, 25])
+        pdl.extraction.patch(volume, point, [1, 25, 25])
     )
     ext.add_feature(
         feature_name='context_patch',
         feature_function=lambda volume, point:
-        extraction.scaled_patch(volume, point, [1, 50, 50], [1, 25, 25])
+        pdl.extraction.scaled_patch(volume, point, [1, 50, 50], [1, 25, 25])
     )
     ext.add_feature(
         feature_name='sternal_angle',
         feature_function=lambda volume, point:
-        extraction.landmark_displacement(volume, point, 'Sternal angle')
+        pdl.extraction.landmark_displacement(volume, point, 'Sternal angle')
     )
     ext.add_feature(
         feature_name='left_nipple',
         feature_function=lambda volume, point:
-        extraction.landmark_displacement(volume, point, 'Left nipple')
+        pdl.extraction.landmark_displacement(volume, point, 'Left nipple')
     )
     ext.add_feature(
         feature_name='right_nipple',
         feature_function=lambda volume, point:
-        extraction.landmark_displacement(volume, point, 'Right nipple')
+        pdl.extraction.landmark_displacement(volume, point, 'Right nipple')
     )
 
     # Create the net.
@@ -290,19 +288,19 @@ def third(train=True):
         # Train on all but the last two volumes, and use a half-half map.
         for index, volume in enumerate(volumes[0:-2]):
             for input_batch, output_batch, _ in ext.iterate_single(
-                    volume, extraction.half_half_map(volume), batch_size):
+                    volume, pdl.extraction.half_half_map(volume), batch_size):
                 net.fit(input_batch, output_batch)
             print('\nFinished training on volumes #' + str(index) + '.\n')
 
         print('Finished training.')
 
         # Save the network for later use.
-        utils.pickle_network(net, 'third.pkl')
+        pdl.utils.pickle_network(net, 'third.pkl')
 
     else:
 
         # Load the net for predictions.
-        utils.unpickle_network('third.pkl')
+        pdl.utils.unpickle_network('third.pkl')
 
     # Test on the reserved second to last volumes.
     test_volume = volumes[-2]
@@ -313,7 +311,7 @@ def third(train=True):
     print('Segmentation complete.')
 
     # Save predicted volumes for analysis.
-    utils.pickle_volume(predicted_volume, 'third.pkl')
+    pdl.utils.pickle_volume(predicted_volume, 'third.pkl')
     test_volume.show_slice(0)
     predicted_volume.show_slice(0)
 
@@ -321,8 +319,8 @@ def third(train=True):
 def fourth(train=True):
 
     # List and load all volumes, then switch them to the axial orientation.
-    volume_list = utils.list_volumes()
-    volumes = [utils.load_volume(volume) for volume in volume_list]
+    volume_list = pdl.utils.list_volumes()
+    volumes = [pdl.utils.load_volume(volume) for volume in volume_list]
     for volume in volumes:
         volume.switch_orientation('acs')
 
@@ -336,36 +334,36 @@ def fourth(train=True):
                if np.sum(volume.seg_data) > min_seg_points]
 
     # Create training maps.
-    point_maps = [extraction.half_half_map(volume) for volume in volumes]
+    point_maps = [pdl.extraction.half_half_map(volume) for volume in volumes]
 
     # Create an Extractor.
-    ext = extraction.Extractor()
+    ext = pdl.extraction.Extractor()
 
     # Add features.
     ext.add_feature(
         feature_name='local_patch',
         feature_function=lambda volume, point:
-        extraction.patch(volume, point, [1, 30, 30])
+        pdl.extraction.patch(volume, point, [1, 30, 30])
     )
     ext.add_feature(
         feature_name='context_patch',
         feature_function=lambda volume, point:
-        extraction.scaled_patch(volume, point, [1, 75, 75], [1, 30, 30])
+        pdl.extraction.scaled_patch(volume, point, [1, 75, 75], [1, 30, 30])
     )
     ext.add_feature(
         feature_name='sternal_angle',
         feature_function=lambda volume, point:
-        extraction.landmark_displacement(volume, point, 'Sternal angle')
+        pdl.extraction.landmark_displacement(volume, point, 'Sternal angle')
     )
     ext.add_feature(
         feature_name='left_nipple',
         feature_function=lambda volume, point:
-        extraction.landmark_displacement(volume, point, 'Left nipple')
+        pdl.extraction.landmark_displacement(volume, point, 'Left nipple')
     )
     ext.add_feature(
         feature_name='right_nipple',
         feature_function=lambda volume, point:
-        extraction.landmark_displacement(volume, point, 'Right nipple')
+        pdl.extraction.landmark_displacement(volume, point, 'Right nipple')
     )
 
     # Create the net.
@@ -455,12 +453,12 @@ def fourth(train=True):
         nolearn.lasagne.visualize.plot_loss(net).show()
 
         # Save the net for later use.
-        utils.pickle_network(net, 'fourth.pkl')
+        pdl.utils.pickle_network(net, 'fourth.pkl')
 
     else:
 
         # Load the net for predictions.
-        utils.unpickle_network('fourth.pkl')
+        pdl.utils.unpickle_network('fourth.pkl')
 
     # Plot convolutional layer weights.
     nolearn.lasagne.visualize.plot_conv_weights(
@@ -476,6 +474,6 @@ def fourth(train=True):
     print('Segmentation complete.')
 
     # Save predicted volumes for analysis, and compare visually.
-    utils.pickle_volume(predicted_volume, 'fourth.pkl')
+    pdl.utils.pickle_volume(predicted_volume, 'fourth.pkl')
     test_volume.show_slice(0)
     predicted_volume.show_slice(0)
