@@ -2,8 +2,23 @@ import numpy as np
 import scipy.ndimage.interpolation
 
 
+class FeatureError(Exception):
+    """
+    An error raised by feature functions when data cannot be extracted.
+
+    Notes
+        This error is used to communicate the idea that a particular feature
+        could not be extracted at a particular point (and not necessarily that
+        something is going wrong in the code).  It is useful for iterators
+        that extract data using a try/except clause, to narrow down the scope
+        of the except clause.
+
+    """
+    pass
+
+
 def patch(volume, point, kernel_shape):
-    """Fetch a patch of a specified size from a specified volume."""
+    """Fetch a patch of a specified size from a specified volumes."""
 
     # Convert kernel shape to a mutable object for fixing up.
     kernel_shape = list(kernel_shape)
@@ -15,7 +30,7 @@ def patch(volume, point, kernel_shape):
 
     # The kernel must include 3 dimensions.
     if len(kernel_shape) != 3:
-        raise Exception('The input kernel must include 3 dimensions.')
+        raise FeatureError('The input kernel must include 3 dimensions.')
 
     # Create arrays to represent the kernel.
     kernel_starts = [-(size // 2) for size in kernel_shape]
@@ -28,21 +43,21 @@ def patch(volume, point, kernel_shape):
                     for i in range(len(kernel_ranges))]
 
     # Check the validity of the patch frames.  If any indices are outside the
-    # scope of the volume, raise an exception.
+    # scope of the volumes, raise an exception.
     for i in range(len(patch_frames)):
 
         # Check that each frame's starting element is >= 0.
         if patch_frames[i][0] < 0:
-            raise Exception
+            raise FeatureError('Patch index too small.')
 
         # Check that each frame's ending element is <= max.
         elif patch_frames[i][1] > volume.shape[i]:
-            raise Exception
+            raise FeatureError('Patch index too large.')
 
     # Create a tuple of the patch's indices.
     patch_indices = tuple([slice(*frame) for frame in patch_frames])
 
-    # Extract patch data from volume.
+    # Extract patch data from volumes.
     patch_data = volume.mri_data[patch_indices]
 
     # Create dimensions of the patch array to return (patches are used in
@@ -56,7 +71,7 @@ def patch(volume, point, kernel_shape):
 def scaled_patch(volume, point, source_kernel, target_kernel):
     """Get a patch of specified size and resample it to a different size."""
 
-    # Get the sacle factors and extract the patch.
+    # Get the scale factors and extract the patch.
     scale_factors = np.array(target_kernel) / np.array(source_kernel)
     voxel_patch = patch(volume, point, source_kernel)
 
@@ -66,7 +81,7 @@ def scaled_patch(volume, point, source_kernel, target_kernel):
 def intensity_mean(volume, point, kernel_shape):
     """Get the mean intensity of points within a patch of specified shape."""
 
-    # Get the patch from the volume.
+    # Get the patch from the volumes.
     voxel_patch = patch(volume, point, kernel_shape)
 
     return np.mean(voxel_patch)
@@ -75,14 +90,10 @@ def intensity_mean(volume, point, kernel_shape):
 def intensity_variance(volume, point, kernel_shape):
     """Get the variance of points within a patch of specified shape."""
 
-    # Get the patch from the volume.
+    # Get the patch from the volumes.
     voxel_patch = patch(volume, point, kernel_shape)
 
     return np.var(voxel_patch)
-
-
-def probability(volume, point, prob_map):
-    return prob_map[point]
 
 
 def landmark_displacement(volume, point, landmark_name):
@@ -92,14 +103,3 @@ def landmark_displacement(volume, point, landmark_name):
     coordinate_array = np.array(point)
 
     return volume.landmarks[landmark_name] - coordinate_array
-
-
-if __name__ == '__main__':
-    import volumetools
-    # List and load all volumes, then switch them to the axial orientation.
-    volume_list = volumetools.list_volumes()
-    volumes = [volumetools.load_volume(volume) for volume in volume_list]
-    for volume in volumes:
-        volume.switch_plane('axial')
-
-    data = scaled_patch(volumes[0], (120, 120, 120), [1, 50, 50], [1, 50, 15])
