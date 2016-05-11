@@ -1,3 +1,5 @@
+from __future__ import division
+
 import numpy as np
 import scipy.ndimage.interpolation
 
@@ -18,7 +20,7 @@ class FeatureError(Exception):
 
 
 def patch(volume, point, kernel_shape):
-    """Fetch a patch of a specified size from a specified volumes."""
+    """Fetch a patch of a specified size from a specified vols."""
 
     # Convert kernel shape to a mutable object for fixing up.
     kernel_shape = list(kernel_shape)
@@ -43,7 +45,7 @@ def patch(volume, point, kernel_shape):
                     for i in range(len(kernel_ranges))]
 
     # Check the validity of the patch frames.  If any indices are outside the
-    # scope of the volumes, raise an exception.
+    # scope of the vols, raise an exception.
     for i in range(len(patch_frames)):
 
         # Check that each frame's starting element is >= 0.
@@ -57,7 +59,7 @@ def patch(volume, point, kernel_shape):
     # Create a tuple of the patch's indices.
     patch_indices = tuple([slice(*frame) for frame in patch_frames])
 
-    # Extract patch data from volumes.
+    # Extract patch data from vols.
     patch_data = volume.mri_data[patch_indices]
 
     # Create dimensions of the patch array to return (patches are used in
@@ -81,7 +83,7 @@ def scaled_patch(volume, point, source_kernel, target_kernel):
 def intensity_mean(volume, point, kernel_shape):
     """Get the mean intensity of points within a patch of specified shape."""
 
-    # Get the patch from the volumes.
+    # Get the patch from the vols.
     voxel_patch = patch(volume, point, kernel_shape)
 
     return np.mean(voxel_patch)
@@ -90,7 +92,7 @@ def intensity_mean(volume, point, kernel_shape):
 def intensity_variance(volume, point, kernel_shape):
     """Get the variance of points within a patch of specified shape."""
 
-    # Get the patch from the volumes.
+    # Get the patch from the vols.
     voxel_patch = patch(volume, point, kernel_shape)
 
     return np.var(voxel_patch)
@@ -103,3 +105,13 @@ def landmark_displacement(volume, point, landmark_name):
     coordinate_array = np.array(point)
 
     return volume.landmarks[landmark_name] - coordinate_array
+
+
+def point_offset(volume, point, offset):
+    """Get the intensity of a single voxel, offset from the specified point."""
+
+    # Convert the coordinates of the point to an array for ease of use.
+    point_array = np.array(point)
+    offset_array = np.array(offset)
+
+    return volume.mri_data[tuple(point_array + offset_array)].reshape(1)
