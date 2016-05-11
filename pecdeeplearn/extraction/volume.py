@@ -1,3 +1,5 @@
+from __future__ import division
+
 import numpy as np
 import scipy.misc
 import copy
@@ -5,7 +7,7 @@ import copy
 
 class Volume:
     """
-    A class representing a scanned, three dimensional volumes.
+    A class representing a scanned, three dimensional vols.
 
     Args
         mri_data (numpy.memmap): a pointer to a set of mri data, with single
@@ -23,7 +25,7 @@ class Volume:
         seg_data (numpy.memmap): equals arg.
         landmarks (dict): equals arg.
         orientation (str): equals arg.
-        shape (tuple): gives the dimensions of the volumes.  Should be
+        shape (tuple): gives the dimensions of the vols.  Should be
             consistent between mri and seg data
 
     """
@@ -36,10 +38,6 @@ class Volume:
         self.mri_data = np.squeeze(mri_data, axis=mri_dims_to_squeeze)
         self.seg_data = np.squeeze(seg_data, axis=seg_dims_to_squeeze)
 
-        # Standardise the mri data.
-        self.mri_data = self.mri_data - np.mean(self.mri_data)
-        self.mri_data /= np.std(self.mri_data)
-
         # Record landmarks and orientation.
         self.landmarks = landmarks
         self.orientation = orientation
@@ -48,11 +46,11 @@ class Volume:
         if self.mri_data.shape != self.seg_data.shape:
             raise Exception('Data dimensions are inconsistent.')
 
-        # If they are consistent, set this as the shape of the volumes.
+        # If they are consistent, set this as the shape of the vols.
         self.shape = self.mri_data.shape
 
     def _swap_axes(self, i, j):
-        """Swaps the axes of all data in the volumes."""
+        """Swaps the axes of all data in the vols."""
 
         # Treat each piece of data separately.
         self.mri_data = np.swapaxes(self.mri_data, i, j)
@@ -118,7 +116,7 @@ class Volume:
         if slice_type == 'mri':
             image_data = mri_slice_data
         elif slice_type == 'seg':
-            image_data = mri_slice_data
+            image_data = seg_slice_data
         elif slice_type == 'both':
 
             # Set the intensity of the segmented voxels to be the maximum
@@ -134,12 +132,12 @@ class Volume:
         scipy.misc.toimage(image_data).show()
 
     def mirror(self, mirror_planes):
-        """Reflect a volumes in the specified planes.
+        """Reflect a vols in the specified planes.
 
         Args
             mirror_planes (str): contains any of the characters a, c, and s -
                 which specify the planes to mirror.  For example,
-                mirror_planes = 'as' will mirror the volumes in the axial and
+                mirror_planes = 'as' will mirror the vols in the axial and
                 sagittal planes, but not the coronal plane.
 
         """
@@ -160,7 +158,7 @@ class Volume:
                     point[i] = (self.shape[i] - 1) - point[i]
 
     def __getitem__(self, indices):
-        """Define volumes slicing behaviour."""
+        """Define vols slicing behaviour."""
 
         # If the indices are not a valid iterable, put them in a list for
         # processing.
@@ -197,7 +195,7 @@ class Volume:
         # Fill in the origin of unused index dimensions with zeroes.
         new_origin.extend([0] * (3 - len(new_origin)))
 
-        # Shift the landmarks for the new volumes based on the new origin.
+        # Shift the landmarks for the new vols based on the new origin.
         new_landmarks = copy.deepcopy(self.landmarks)
         new_origin_array = np.array(new_origin)
         for landmark_location in new_landmarks.values():
