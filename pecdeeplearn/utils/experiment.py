@@ -18,29 +18,19 @@ class Experiment:
         self.data_path = data_path
         self.name = name
 
-        # Create paths for the data subfolders.
+        # Check the name provided is not taken.
         self.results_path = os.path.join(self.data_path, 'results', self.name)
+        if os.path.isdir(self.results_path):
+            raise Exception(name + ' is in use, please choose another.')
+        os.mkdir(self.results_path)
+
+        # Create paths for the other data subfolders.
         self.mris_path = os.path.join(self.data_path, 'mris')
         self.segs_path = os.path.join(self.data_path, 'segmentations')
         self.landmarks_path = os.path.join(self.data_path, 'landmarks')
 
         # Initialise a dictionary for holding experiment parameters.
         self.params = {}
-
-    def _update_results_path(self):
-        """Updates the name of the current experiment to avoid overwriting."""
-
-        # While the current name is taken, increment a count tag at the end of
-        # the name.
-        count = 1
-        while os.path.isdir(self.results_path):
-            self.results_path = os.path.join(self.data_path,
-                                             'results',
-                                             self.name + str(count))
-            count += 1
-
-        # Make the new directory.
-        os.mkdir(self.results_path)
 
     def add_param(self, key, value):
         self.params[key] = value
@@ -138,10 +128,6 @@ class Experiment:
     def pickle_volume(self, volume, name):
         """Pickle a (usually predicted) volume into the results directory."""
 
-        # Make sure another experiment isn't being overwritten.
-        self._update_results_path()
-
-        # Save the volume.
         with open(os.path.join(self.results_path, name), 'wb') as f:
             pickle.dump(volume, f, -1)
 
@@ -155,8 +141,6 @@ class Experiment:
     def save_network(self, net, name):
         """Save a network's weights into the results directory."""
 
-        # Make sure another experiment isn't being overwritten, and save.
-        self._update_results_path()
         net.save_params_to(os.path.join(self.results_path, name))
 
     def load_network(self, net, name):
@@ -167,9 +151,6 @@ class Experiment:
 
     def record_params(self):
         """Record the current experiment's parameters."""
-
-        # Make sure another experiment isn't being overwritten.
-        self._update_results_path()
 
         # Write the params dictionary.
         with open(os.path.join(self.results_path, 'params.txt'), 'w') as f:
