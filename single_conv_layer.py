@@ -84,6 +84,9 @@ for input_batch, output_batch, in \
                              exp.params['batch_size']):
     net.fit(input_batch, output_batch)
 
+# Save the network.
+exp.save_network(net, 'net')
+
 # Predict on the last volume.
 test_volume = vols[-1]
 predicted_volume = ext.predict(net, test_volume, exp.params['batch_size'])

@@ -1,9 +1,7 @@
-from pecdeeplearn.utils import Experiment
+import pecdeeplearn as pdl
+import data_path
 
 if __name__ == '__main__':
-    exp = Experiment(r'C:\Users\sgilm\Documents\University\ENGSCI 700\data',
-                     'test')
-    exp.add_param('batch_size', 5000)
-    exp.add_param('kernel', [1, 21, 21])
-    exp.record_params()
-
+    exp = pdl.utils.Experiment(data_path.get(), 'single_hidden_layer')
+    x = exp.unpickle_volume('predicted_volume')
+    x.show_slice(0)
