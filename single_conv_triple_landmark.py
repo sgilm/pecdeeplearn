@@ -10,15 +10,19 @@ import time
 
 # Create an experiment object to keep track of parameters and facilitate data
 # loading and save_allowed.
-exp = pdl.utils.Experiment(data_path.get(), 'single_conv_single_landmark')
+exp = pdl.utils.Experiment(data_path.get(), 'single_conv_triple_landmark')
 exp.add_param('volume_depth', 20)
 exp.add_param('min_seg_points', 100)
 exp.add_param('patch_shape', [1, 41, 41])
-exp.add_param('landmark', 'Sternal angle')
+exp.add_param('landmark_1', 'Sternal angle')
+exp.add_param('landmark_2', 'Left nipple')
+exp.add_param('landmark_3', 'Right nipple')
 exp.add_param('filter_size', (21, 21))
 exp.add_param('num_filters', 64)
 exp.add_param('patch_num_dense_units', 1000)
-exp.add_param('landmark_num_dense_units', 1000)
+exp.add_param('landmark_1_num_dense_units', 1000)
+exp.add_param('landmark_2_num_dense_units', 1000)
+exp.add_param('landmark_3_num_dense_units', 1000)
 exp.add_param('batch_size', 5000)
 exp.add_param('update_learning_rate', 0.0001)
 exp.add_param('update_momentum', 0.9)
@@ -54,9 +58,22 @@ ext.add_feature(
     pdl.extraction.patch(volume, point, exp.params['patch_shape'])
 )
 ext.add_feature(
-    feature_name='landmark',
+    feature_name='landmark_1',
     feature_function=lambda volume, point:
-    pdl.extraction.landmark_displacement(volume, point, exp.params['landmark'])
+    pdl.extraction.landmark_displacement(
+        volume, point, exp.params['landmark_1'])
+)
+ext.add_feature(
+    feature_name='landmark_2',
+    feature_function=lambda volume, point:
+    pdl.extraction.landmark_displacement(
+        volume, point, exp.params['landmark_2'])
+)
+ext.add_feature(
+    feature_name='landmark_3',
+    feature_function=lambda volume, point:
+    pdl.extraction.landmark_displacement(
+        volume, point, exp.params['landmark_3'])
 )
 
 # Create the net.
@@ -76,14 +93,26 @@ net = nolearn.lasagne.NeuralNet(
 
         # Layers for the landmark displacement.
         (lasagne.layers.InputLayer,
-         {'name': 'landmark', 'shape': (None, 3)}),
+         {'name': 'landmark_1', 'shape': (None, 3)}),
         (lasagne.layers.DenseLayer,
-         {'name': 'landmark_dense',
-          'num_units': exp.params['landmark_num_dense_units']}),
+         {'name': 'landmark_1_dense',
+          'num_units': exp.params['landmark_1_num_dense_units']}),
+        (lasagne.layers.InputLayer,
+         {'name': 'landmark_2', 'shape': (None, 3)}),
+        (lasagne.layers.DenseLayer,
+         {'name': 'landmark_2_dense',
+          'num_units': exp.params['landmark_2_num_dense_units']}),
+        (lasagne.layers.InputLayer,
+         {'name': 'landmark_3', 'shape': (None, 3)}),
+        (lasagne.layers.DenseLayer,
+         {'name': 'landmark_3_dense',
+          'num_units': exp.params['landmark_3_num_dense_units']}),
 
         # Layers for concatenation and output.
         (lasagne.layers.ConcatLayer,
-         {'name': 'concat', 'incomings': ['patch_dense', 'landmark_dense']}),
+         {'name': 'concat',
+          'incomings': ['patch_dense', 'landmark_1_dense',
+                        'landmark_2_dense', 'landmark_3_dense']}),
         (lasagne.layers.DenseLayer,
          {'name': 'output', 'num_units': 2,
           'nonlinearity': lasagne.nonlinearities.softmax}),
