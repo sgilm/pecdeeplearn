@@ -11,6 +11,7 @@ vol_list = pdl.utils.list_volumes()
 vols = [pdl.utils.load_volume(vol) for vol in vol_list]
 for vol in vols:
     vol.switch_orientation('acs')
+pdl.utils.standardise_volumes(vols)
 
 # Take a slice corresponding to the location of the left nipple.
 vols = [vol[int(vol.landmarks['Left nipple'][0])] for vol in vols]

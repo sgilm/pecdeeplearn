@@ -11,6 +11,7 @@ vol_list = pdl.utils.list_volumes()
 vols = [pdl.utils.load_volume(vol) for vol in vol_list]
 for vol in vols:
     vol.switch_orientation('acs')
+pdl.utils.standardise_volumes(vols)
 
 # Take a slice corresponding to the location of the left nipple.
 vols = [vol[int(vol.landmarks['Left nipple'][0])] for vol in vols]
@@ -26,10 +27,11 @@ point_maps = [pdl.extraction.half_half_map(vol) for vol in vols]
 ext = pdl.extraction.Extractor()
 
 # Add features.
+kernel_shape = [1, 41, 41]
 ext.add_feature(
-    feature_name='point',
+    feature_name='patch',
     feature_function=lambda volume, point:
-    pdl.extraction.point_offset(volume, point, [0, 0, 0])
+    pdl.extraction.patch(volume, point, kernel_shape)
 )
 
 # Define batch size.
@@ -39,30 +41,32 @@ batch_size = 5000
 net = nolearn.lasagne.NeuralNet(
     layers=[
 
-        # Three layers; one hidden layer.
         (lasagne.layers.InputLayer,
-         {'name': 'point', 'shape': (batch_size, 1)}),
+         {'name': 'patch',
+          'shape': (None, 1, 41, 41)}),
+        (lasagne.layers.Conv2DLayer,
+         {'name': 'conv',
+          'num_filters': 64,
+          'filter_size': (41, 41)}),
         (lasagne.layers.DenseLayer,
-         {'name': 'hidden', 'num_units': 2000}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'output', 'num_units': 2,
+         {'name': 'output',
+          'num_units': 2,
           'nonlinearity': lasagne.nonlinearities.softmax}),
+
     ],
 
-    # Optimization method.
     update=lasagne.updates.nesterov_momentum,
     update_learning_rate=0.0001,
     update_momentum=0.9,
 
-    # Other options.
-    max_epochs=100,
-    verbose=1,
+    max_epochs=50,
+    verbose=True,
 )
 
 # Iterate through and train.
 for input_batch, output_batch, in \
         ext.iterate_multiple(vols[:-1], point_maps[:-1], batch_size):
-    net.fit(input_batch['point'], output_batch)
+    net.fit(input_batch, output_batch)
 
 # Predict on the last volume.
 test_volume = vols[-1]

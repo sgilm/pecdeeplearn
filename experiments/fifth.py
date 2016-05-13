@@ -28,23 +28,33 @@ ext = pdl.extraction.Extractor()
 
 # Add features.
 ext.add_feature(
-    feature_name='patch',
+    feature_name='local_patch',
     feature_function=lambda volume, point:
     pdl.extraction.patch(volume, point, [1, 21, 21])
 )
 ext.add_feature(
-    feature_name='voxel_intensity',
+    feature_name='context_patch',
     feature_function=lambda volume, point:
-    pdl.extraction.point_offset(volume, point, [0, 0, 0])
+    pdl.extraction.scaled_patch(volume, point, [1, 63, 63], [1, 21, 21])
 )
 ext.add_feature(
     feature_name='sternal_angle',
     feature_function=lambda volume, point:
     pdl.extraction.landmark_displacement(volume, point, 'Sternal angle')
 )
+ext.add_feature(
+    feature_name='left_nipple',
+    feature_function=lambda volume, point:
+    pdl.extraction.landmark_displacement(volume, point, 'Left nipple')
+)
+ext.add_feature(
+    feature_name='right_nipple',
+    feature_function=lambda volume, point:
+    pdl.extraction.landmark_displacement(volume, point, 'Right nipple')
+)
 
 # Define batch size.
-batch_size = 5000
+batch_size = 1000
 
 # Create the net.
 net = nolearn.lasagne.NeuralNet(
@@ -52,29 +62,42 @@ net = nolearn.lasagne.NeuralNet(
 
         # Layers for the local patch.
         (lasagne.layers.InputLayer,
-         {'name': 'patch', 'shape': (None, 1, 21, 21)}),
+         {'name': 'local_patch', 'shape': (None, 1, 21, 21)}),
         (lasagne.layers.Conv2DLayer,
-         {'name': 'patch_conv', 'num_filters': 64,
+         {'name': 'local_patch_conv1', 'num_filters': 64,
           'filter_size': (3, 3)}),
         (lasagne.layers.DenseLayer,
-         {'name': 'patch_dense', 'num_units': 100}),
+         {'name': 'local_patch_dense1', 'num_units': 100}),
 
-        # Layers for the voxel intensity.
+        # Layers for the context patch.
         (lasagne.layers.InputLayer,
-         {'name': 'voxel_intensity', 'shape': (None, 1)}),
+         {'name': 'context_patch', 'shape': (None, 1, 21, 21)}),
+        (lasagne.layers.Conv2DLayer,
+         {'name': 'context_patch_conv1', 'num_filters': 64,
+          'filter_size': (3, 3)}),
         (lasagne.layers.DenseLayer,
-         {'name': 'voxel_intensity_dense', 'num_units': 2000}),
+         {'name': 'context_patch_dense1', 'num_units': 100}),
 
-        # Layers for the landmark displacement.
+        # Layers for the landmark displacements.
         (lasagne.layers.InputLayer,
          {'name': 'sternal_angle', 'shape': (None, 3)}),
         (lasagne.layers.DenseLayer,
-         {'name': 'sternal_angle_dense', 'num_units': 100}),
+         {'name': 'sternal_angle_dense1', 'num_units': 100}),
+        (lasagne.layers.InputLayer,
+         {'name': 'left_nipple', 'shape': (None, 3)}),
+        (lasagne.layers.DenseLayer,
+         {'name': 'left_nipple_dense1', 'num_units': 100}),
+        (lasagne.layers.InputLayer,
+         {'name': 'right_nipple', 'shape': (None, 3)}),
+        (lasagne.layers.DenseLayer,
+         {'name': 'right_nipple_dense1', 'num_units': 100}),
 
         # Layers for concatenation and output.
         (lasagne.layers.ConcatLayer,
-         {'incomings': ['patch_dense', 'voxel_intensity_dense',
-                        'sternal_angle_dense']}),
+         {'incomings': ['local_patch_dense1', 'context_patch_dense1',
+                        'sternal_angle_dense1', 'left_nipple_dense1',
+                        'right_nipple_dense1'
+                        ]}),
         (lasagne.layers.DenseLayer,
          {'name': 'output', 'num_units': 2,
           'nonlinearity': lasagne.nonlinearities.softmax}),
