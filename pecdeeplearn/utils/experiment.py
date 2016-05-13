@@ -22,7 +22,7 @@ class Experiment:
         self.results_path = os.path.join(self.data_path, 'results', self.name)
 
         # Assume the results directory exists, and if not then create it and
-        # allow saving.
+        # allow save.
         self.save_allowed = False
         if not os.path.isdir(self.results_path):
             os.mkdir(self.results_path)
@@ -37,9 +37,31 @@ class Experiment:
         self.params = {}
 
     def _validate_save(self):
+        """Create new directory for save if currently referencing existing."""
+
+        # Only change the save directory if one with existing data is currently
+        # being pointed to.
         if not self.save_allowed:
-            raise Exception(self.name + ' is in use, please choose another ' +
-                            'name if you would like to save results.')
+
+            # Get the current tag from the end of the experiment name.
+            base_name = self.name.rstrip(' 0123456789')
+            tag_length = len(self.name) - len(base_name)
+            if tag_length == 0:
+                tag = 1
+            else:
+                tag = int(self.name[-tag_length:])
+
+            # Increment tag until a valid name is found.
+            while os.path.isdir(self.results_path):
+                tag += 1
+                self.name = base_name + ' ' + str(tag)
+                self.results_path = os.path.join(self.data_path,
+                                                 'results',
+                                                 self.name)
+
+            # Create the new directory, and allow saves.
+            os.mkdir(self.results_path)
+            self.save_allowed = True
 
     def add_param(self, key, value):
         self.params[key] = value
