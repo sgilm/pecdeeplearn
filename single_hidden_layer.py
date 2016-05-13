@@ -6,7 +6,6 @@ import nolearn.lasagne
 import pecdeeplearn as pdl
 import data_path
 
-
 # Create an experiment object to keep track of parameters and facilitate data
 # loading and saving.
 exp = pdl.utils.Experiment(data_path.get(), 'single_hidden_layer')
