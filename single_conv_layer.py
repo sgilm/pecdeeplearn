@@ -5,11 +5,12 @@ import numpy as np
 import nolearn.lasagne
 import pecdeeplearn as pdl
 import data_path
+import time
 
 
 # Create an experiment object to keep track of parameters and facilitate data
-# loading and saving.
-exp = pdl.utils.Experiment(data_path.get(), 'single_conv_layer')
+# loading and save_allowed.
+exp = pdl.utils.Experiment(data_path.get(), 'single_conv')
 exp.add_param('volume_depth', 20)
 exp.add_param('min_seg_points', 100)
 exp.add_param('local_shape', [1, 41, 41])
@@ -77,12 +78,20 @@ net = nolearn.lasagne.NeuralNet(
     verbose=1
 )
 
+# Record information to be used for printing progress.
+total_points = np.sum(point_maps)
+start_time = time.time()
+
 # Iterate through and train.
-for input_batch, output_batch, in \
-        ext.iterate_multiple(vols[:-1],
-                             point_maps[:-1],
-                             exp.params['batch_size']):
+for i, (input_batch, output_batch) in \
+        enumerate(ext.iterate_multiple(vols[:-1],
+                                       point_maps[:-1],
+                                       exp.params['batch_size'])):
     net.fit(input_batch, output_batch)
+    pdl.utils.print_progress(start_time,
+                             (i + 1) * exp.params['batch_size'],
+                             total_points)
+print("Training complete.")
 
 # Save the network.
 exp.save_network(net, 'net')
