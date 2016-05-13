@@ -6,9 +6,10 @@ import nolearn.lasagne
 import pecdeeplearn as pdl
 import data_path
 
+
 # Create an experiment object to keep track of parameters and facilitate data
 # loading and saving.
-exp = pdl.utils.Experiment(data_path.get(), 'single_hidden_layer')
+exp = pdl.utils.Experiment(data_path.get(), 'single_dense_layer')
 exp.add_param('min_seg_points', 100)
 exp.add_param('point_offset', [0, 0, 0])
 exp.add_param('batch_size', 5000)
@@ -78,7 +79,7 @@ for input_batch, output_batch, in \
     net.fit(input_batch, output_batch)
 
 # Save the network.
-exp.save_network(net, 'simple_net')
+exp.save_network(net, 'net')
 
 # Predict on the last volume.
 test_volume = vols[-1]

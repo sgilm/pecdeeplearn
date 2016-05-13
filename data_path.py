@@ -1,2 +1,2 @@
 def get():
-    return r'C:\Users\sgilm\Documents\University\ENGSCI 700\data'
+    return '/home/sgilm/University/data'
