@@ -18,11 +18,15 @@ class Experiment:
         self.data_path = data_path
         self.name = name
 
-        # Check the name provided is not taken.
+        # Record the results path.
         self.results_path = os.path.join(self.data_path, 'results', self.name)
-        if os.path.isdir(self.results_path):
-            raise Exception(name + ' is in use, please choose another.')
-        os.mkdir(self.results_path)
+
+        # Assume the results directory exists, and if not then create it and
+        # allow saving.
+        self.save_allowed = False
+        if not os.path.isdir(self.results_path):
+            os.mkdir(self.results_path)
+            self.save_allowed = True
 
         # Create paths for the other data subfolders.
         self.mris_path = os.path.join(self.data_path, 'mris')
@@ -31,6 +35,11 @@ class Experiment:
 
         # Initialise a dictionary for holding experiment parameters.
         self.params = {}
+
+    def _validate_save(self):
+        if not self.save_allowed:
+            raise Exception(self.name + ' is in use, please choose another ' +
+                            'name if you would like to save results.')
 
     def add_param(self, key, value):
         self.params[key] = value
@@ -128,6 +137,7 @@ class Experiment:
     def pickle_volume(self, volume, name):
         """Pickle a (usually predicted) volume into the results directory."""
 
+        self._validate_save()
         with open(os.path.join(self.results_path, name), 'wb') as f:
             pickle.dump(volume, f, -1)
 
@@ -141,6 +151,7 @@ class Experiment:
     def save_network(self, net, name):
         """Save a network's weights into the results directory."""
 
+        self._validate_save()
         net.save_params_to(os.path.join(self.results_path, name))
 
     def load_network(self, net, name):
@@ -153,6 +164,7 @@ class Experiment:
         """Record the current experiment's parameters."""
 
         # Write the params dictionary.
+        self._validate_save()
         with open(os.path.join(self.results_path, 'params.txt'), 'w') as f:
             for key, value in self.params.items():
                 f.write('{} = {}\n'.format(key, value))
