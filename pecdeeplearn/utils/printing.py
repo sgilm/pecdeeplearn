@@ -21,6 +21,6 @@ def print_progress(start_time, points_processed, total_points):
         .format(*hours_minutes_seconds(elapsed_time))
     print('\n' + elapsed_message)
 
-    remaining_message = "{:02.0f}:{:02.0f}:{:02.0f} estimated remaining." \
+    remaining_message = "{:02.0f}:{:02.0f}:{:02.0f} maximum remaining." \
         .format(*hours_minutes_seconds(remaining_time))
     print(remaining_message + '\n')
