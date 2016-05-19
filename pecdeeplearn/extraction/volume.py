@@ -1,8 +1,8 @@
 from __future__ import division
 
 import numpy as np
-import scipy.misc
 import copy
+import matplotlib.pylab as plt
 
 
 class Volume:
@@ -106,30 +106,23 @@ class Volume:
 
         return mri_slice_data, seg_slice_data
 
-    def show_slice(self, slice_index, slice_type='both'):
+    def show_slice(self, slice_index, include_seg=True, seg_cmap='Reds'):
         """Show mri and seg data for a particular slice as a picture."""
 
         # Get the data for both mri and seg.
         mri_slice_data, seg_slice_data = self.get_slice(slice_index)
 
-        # Set the image data according to the specified slice type to show.
-        if slice_type == 'mri':
-            image_data = mri_slice_data
-        elif slice_type == 'seg':
-            image_data = seg_slice_data
-        elif slice_type == 'both':
+        # Plot the mri image in greyscale.
+        plt.figure()
+        plt.imshow(mri_slice_data, cmap='gray')
 
-            # Set the intensity of the segmented voxels to be the maximum
-            # intensity of the mri (scipy.misc.toimage displays the maximum
-            # intensity as white and 0 as black).
-            seg_indices = np.nonzero(seg_slice_data)
-            mri_slice_data[seg_indices] = np.amax(mri_slice_data)
-            image_data = mri_slice_data
-        else:
-            raise Exception('Unrecognised slice type.')
+        # Show the segmentation (with transparency) if required.
+        if include_seg:
+            masked_seg = np.ma.masked_equal(seg_slice_data, 0)
+            plt.imshow(masked_seg, cmap=seg_cmap, alpha=0.4, vmin=0, vmax=1)
 
-        # Display the slice.
-        scipy.misc.toimage(image_data).show()
+        # Show the plot.
+        plt.show()
 
     def mirror(self, mirror_planes):
         """Reflect a vols in the specified planes.
