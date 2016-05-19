@@ -12,7 +12,7 @@ import time
 # loading and save_allowed.
 exp = pdl.utils.Experiment(data_path.get(), 'single_acs_conv_triple_landmark')
 exp.add_param('volume_depth', 60)
-exp.add_param('max_points_per_volume', 80000)
+exp.add_param('max_points_per_volume', 50000)
 exp.add_param('margins', (15, 15, 15))
 exp.add_param('min_seg_points', 100)
 exp.add_param('input_patch_shape', [1, 31, 31])
