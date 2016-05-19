@@ -19,11 +19,9 @@ exp.add_param('update_learning_rate', 0.0001)
 exp.add_param('update_momentum', 0.9)
 exp.add_param('max_epochs', 100)
 
-# List and load all vols, then switch them to the axial orientation.
+# List and load all vols.
 vol_list = exp.list_volumes()
 vols = [exp.load_volume(vol) for vol in vol_list]
-for vol in vols:
-    vol.switch_orientation('acs')
 
 # Standardise the data.
 pdl.utils.standardise_volumes(vols)
