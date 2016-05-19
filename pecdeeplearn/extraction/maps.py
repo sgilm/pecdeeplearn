@@ -93,7 +93,7 @@ def half_half_map(volume, margins=(0, 0, 0)):
 
     # Return a blank map if no voxels are segmented.
     if num_segs == 0:
-        return np.zeros(volume.shape, dtype='bool')
+        return np.full(volume.shape, False, dtype='bool')
 
     # Generate the same number of random points that are not segmented, within
     # the specified margins.
