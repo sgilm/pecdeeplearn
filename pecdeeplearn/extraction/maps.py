@@ -85,7 +85,7 @@ def segmentation_map(volumes):
     return counts.astype(np.bool)
 
 
-def half_half_map(volume):
+def half_half_map(volume, margins=(0, 0, 0)):
     """Create training map with equal # segmented and non-segmented voxels."""
 
     # Count the number of segmented voxels.
@@ -95,14 +95,17 @@ def half_half_map(volume):
     if num_segs == 0:
         return np.zeros(volume.shape, dtype='bool')
 
-    # Generate the same number of random points that are not segmented.
+    # Generate the same number of random points that are not segmented, within
+    # the specified margins.
     non_seg_points = set()
     while len(non_seg_points) < num_segs:
         point = []
-        for max_size in volume.shape:
-            point.append(np.random.randint(0, max_size))
+        for margin, max_size in zip(*[margins, volume.shape]):
+            point.append(np.random.randint(margin, max_size - margin))
         point = tuple(point)
-        if volume.seg_data[point] != 1:
+
+        # Test that the point is not segmented, and add it if not.
+        if (volume.seg_data[point] != 1):
             non_seg_points.add(point)
 
     # Create half-half map, starting with all segmented voxels.
