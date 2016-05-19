@@ -9,12 +9,12 @@ import time
 
 
 # Create an experiment object to keep track of parameters and facilitate data
-# loading and save_allowed.
+# loading and saving.
 exp = pdl.utils.Experiment(data_path.get(), 'single_conv')
 exp.add_param('volume_depth', 20)
 exp.add_param('min_seg_points', 100)
 exp.add_param('local_shape', [1, 41, 41])
-exp.add_param('filter_size', (21, 21))
+exp.add_param('filter_size', (3, 3))
 exp.add_param('num_filters', 64)
 exp.add_param('batch_size', 5000)
 exp.add_param('update_learning_rate', 0.0001)
