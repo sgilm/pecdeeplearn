@@ -10,19 +10,26 @@ import time
 
 # Create an experiment object to keep track of parameters and facilitate data
 # loading and save_allowed.
-exp = pdl.utils.Experiment(data_path.get(), 'single_conv_triple_landmark')
+exp = pdl.utils.Experiment(
+    data_path.get(),
+    'single_local_a_conv_single_context_a_conv_triple_landmark'
+)
 exp.add_param('volume_depth', 20)
 exp.add_param('min_seg_points', 100)
-exp.add_param('patch_shape', [1, 41, 41])
+exp.add_param('local_shape', [1, 41, 41])
+exp.add_param('context_source', [1, 81, 81])
+exp.add_param('context_target', [1, 21, 21])
 exp.add_param('landmark_1', 'Sternal angle')
 exp.add_param('landmark_2', 'Left nipple')
 exp.add_param('landmark_3', 'Right nipple')
-exp.add_param('filter_size', (21, 21))
+exp.add_param('local_filter_size', (21, 21))
+exp.add_param('context_filter_size', (11, 11))
 exp.add_param('num_filters', 64)
-exp.add_param('patch_num_dense_units', 1000)
-exp.add_param('landmark_1_num_dense_units', 1000)
-exp.add_param('landmark_2_num_dense_units', 1000)
-exp.add_param('landmark_3_num_dense_units', 1000)
+exp.add_param('local_num_dense_units', 500)
+exp.add_param('context_num_dense_units', 500)
+exp.add_param('landmark_1_num_dense_units', 500)
+exp.add_param('landmark_2_num_dense_units', 500)
+exp.add_param('landmark_3_num_dense_units', 500)
 exp.add_param('batch_size', 5000)
 exp.add_param('update_learning_rate', 0.0001)
 exp.add_param('update_momentum', 0.9)
@@ -53,9 +60,17 @@ ext = pdl.extraction.Extractor()
 
 # Add features.
 ext.add_feature(
-    feature_name='patch',
+    feature_name='local',
     feature_function=lambda volume, point:
-    pdl.extraction.patch(volume, point, exp.params['patch_shape'])
+    pdl.extraction.patch(volume, point, exp.params['local_shape'])
+)
+ext.add_feature(
+    feature_name='context',
+    feature_function=lambda volume, point:
+    pdl.extraction.scaled_patch(volume,
+                                point,
+                                exp.params['context_source'],
+                                exp.params['context_target'])
 )
 ext.add_feature(
     feature_name='landmark_1',
@@ -82,14 +97,25 @@ net = nolearn.lasagne.NeuralNet(
 
         # Layers for the local patch.
         (lasagne.layers.InputLayer,
-         {'name': 'patch',
-          'shape': tuple([None] + exp.params['patch_shape'])}),
+         {'name': 'local',
+          'shape': tuple([None] + exp.params['local_shape'])}),
         (lasagne.layers.Conv2DLayer,
-         {'name': 'conv', 'num_filters': exp.params['num_filters'],
-          'filter_size': exp.params['filter_size']}),
+         {'name': 'local_conv', 'num_filters': exp.params['num_filters'],
+          'filter_size': exp.params['local_filter_size']}),
         (lasagne.layers.DenseLayer,
-         {'name': 'patch_dense',
-          'num_units': exp.params['patch_num_dense_units']}),
+         {'name': 'local_dense',
+          'num_units': exp.params['local_num_dense_units']}),
+
+        # Layers for the context patch.
+        (lasagne.layers.InputLayer,
+         {'name': 'context',
+          'shape': tuple([None] + exp.params['context_target'])}),
+        (lasagne.layers.Conv2DLayer,
+         {'name': 'context_conv', 'num_filters': exp.params['num_filters'],
+          'filter_size': exp.params['context_filter_size']}),
+        (lasagne.layers.DenseLayer,
+         {'name': 'context_dense',
+          'num_units': exp.params['context_num_dense_units']}),
 
         # Layers for the landmark displacement.
         (lasagne.layers.InputLayer,
@@ -111,7 +137,7 @@ net = nolearn.lasagne.NeuralNet(
         # Layers for concatenation and output.
         (lasagne.layers.ConcatLayer,
          {'name': 'concat',
-          'incomings': ['patch_dense', 'landmark_1_dense',
+          'incomings': ['local_dense', 'context_dense', 'landmark_1_dense',
                         'landmark_2_dense', 'landmark_3_dense']}),
         (lasagne.layers.DenseLayer,
          {'name': 'output', 'num_units': 2,
