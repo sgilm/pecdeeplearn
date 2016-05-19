@@ -113,7 +113,8 @@ class Volume:
         mri_slice_data, seg_slice_data = self.get_slice(slice_index)
 
         # Plot the mri image in greyscale.
-        plt.figure()
+        plt.figure(frameon=False)
+        plt.axis('off')
         plt.imshow(mri_slice_data, cmap='gray')
 
         # Show the segmentation (with transparency) if required.
