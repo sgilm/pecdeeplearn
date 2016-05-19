@@ -62,15 +62,19 @@ class Extractor:
         # self.find_feature_sizes().
         self.feature_sizes[feature_name] = None
 
-    def find_feature_sizes(self, volume):
-        """Fill in the feature_sizes dictionary using a supplied vol."""
+    def find_feature_sizes(self, volume, point_map=None):
+        """Fill in the feature_sizes dictionary using a supplied volume."""
+
+        # If point_map is not supplied, then iterate over all points.
+        if point_map is None:
+            point_map = np.full(volume.shape, True, dtype='bool')
 
         # Construct lists for iterating through all points.
-        ranges_to_iterate = [range(size) for size in volume.shape]
+        points = zip(*np.nonzero(point_map))
 
-        # Loop through all points and attempt to extract data.  Some points
+        # Loop through the points and attempt to extract data.  Some points
         # (e.g. edge points for patches) will be invalid.
-        for point in itertools.product(*ranges_to_iterate):
+        for point in points:
 
             # Create a list of all features for which we don't have sizes.
             rem_features = [feature_name for feature_name, feature_size in
@@ -181,7 +185,7 @@ class Extractor:
         point_set = tuple(zip(*shuffled_indices))
 
         # Make sure all feature sizes have been calculated.
-        self.find_feature_sizes(volume)
+        self.find_feature_sizes(volume, point_map=point_map)
 
         # Initialise the arrays to return data in.
         input_batch, output_batch, point_batch = \
@@ -266,7 +270,7 @@ class Extractor:
         sub_batch_sizes[-1] = batch_size - sum(sub_batch_sizes[:-1])
 
         # Make sure that the dictionary of feature sizes has been initialised.
-        self.find_feature_sizes(volume)
+        self.find_feature_sizes(volume, point_map=point_map)
 
         # Initialise the arrays to return data in.
         input_batch, output_batch, point_batch = \
@@ -339,8 +343,8 @@ class Extractor:
                            for point_ratio in point_ratios]
 
         # Make sure that the dictionary of feature sizes has been initialised.
-        for volume in volumes:
-            self.find_feature_sizes(volume)
+        for volume, point_map in zip(volumes, point_maps):
+            self.find_feature_sizes(volume, point_map=point_map)
 
         # Initialise the arrays to return data in.
         input_batch, output_batch, point_batch = \
