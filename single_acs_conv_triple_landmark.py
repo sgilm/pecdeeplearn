@@ -12,6 +12,7 @@ import time
 # loading and save_allowed.
 exp = pdl.utils.Experiment(data_path.get(), 'single_acs_conv_triple_landmark')
 exp.add_param('volume_depth', 60)
+exp.add_param('max_points_per_volume', 80000)
 exp.add_param('margins', (15, 15, 15))
 exp.add_param('min_seg_points', 100)
 exp.add_param('input_patch_shape', [1, 31, 31])
@@ -45,14 +46,18 @@ vols = [vol[(centre_slices[i] - exp.params['volume_depth'] // 2):
             (centre_slices[i] + exp.params['volume_depth'] // 2)]
         for i, vol in enumerate(vols)]
 
-# Strip away vols with little segmentation data.
+# Discard volumes with little segmentation data.
 vols = [vol for vol in vols
         if np.sum(vol.seg_data) > exp.params['min_seg_points']]
 
 # Create training maps.
-point_maps = [pdl.extraction.half_half_map(vol,
-                                           margins=exp.params['margins'])
-              for vol in vols]
+point_maps = [
+    pdl.extraction.half_half_map(
+        vol,
+        max_points=exp.params['max_points_per_volume'],
+        margins=exp.params['margins']
+    )
+    for vol in vols]
 
 # Create an Extractor.
 ext = pdl.extraction.Extractor()
@@ -169,7 +174,7 @@ net = nolearn.lasagne.NeuralNet(
 )
 
 # Record information to be used for printing progress.
-total_points = np.sum(point_maps)
+total_points = np.count_nonzero(point_maps)
 start_time = time.time()
 
 # Iterate through and train.
@@ -194,5 +199,5 @@ predicted_volume = ext.predict(net, test_volume, exp.params['batch_size'])
 exp.pickle_volume(test_volume, 'test_volume')
 exp.pickle_volume(predicted_volume, 'predicted_volume')
 
-# Record the parameters
+# Record the parameters.
 exp.record_params()
