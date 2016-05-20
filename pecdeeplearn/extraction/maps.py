@@ -1,6 +1,7 @@
 from __future__ import division
 
 import numpy as np
+import random
 
 
 def probability_bins(volumes, num_bins=25, scale=None):
@@ -85,37 +86,58 @@ def segmentation_map(volumes):
     return counts.astype(np.bool)
 
 
-def half_half_map(volume, margins=(0, 0, 0)):
+def half_half_map(volume, max_points=None, margins=(0, 0, 0)):
     """Create training map with equal # segmented and non-segmented voxels."""
 
-    # Count the number of segmented voxels.
-    num_segs = np.sum(volume.seg_data)
+    # Define a function to take a random sample of point indices from an array,
+    # out of those points where the array contains a certain value.
+    def sample_indices_by_value(array, value, max_samples):
+        indices = np.where(array == value)
+        points = zip(*indices)
 
-    # Return a blank map if no voxels are segmented.
-    if num_segs == 0:
+        if len(points) < max_samples:
+            return points
+        else:
+            return random.sample(points, max_samples)
+
+    # Create slices to use for extracting the inner part of the volume.
+    margined_slices = [slice(margin, max_size - margin)
+                       for margin, max_size in zip(margins, volume.shape)]
+
+    # Extract the inner part (within the margins).
+    margined_data = volume.seg_data[margined_slices]
+
+    # Count number of segmented voxels and non-segmented voxels.
+    num_seg_points = np.count_nonzero(margined_data == 1)
+    num_non_seg_points = np.count_nonzero(margined_data == 0)
+
+    # Find the number of points to sample for each class.
+    num_class_points = min(num_seg_points, num_non_seg_points)
+    if max_points is not None:
+        num_class_points = min(num_class_points, max_points // 2)
+
+    # Return a blank map if either class is empty.
+    if num_class_points == 0:
         return np.full(volume.shape, False, dtype='bool')
 
-    # Generate the same number of random points that are not segmented, within
-    # the specified margins.
-    non_seg_points = set()
-    while len(non_seg_points) < num_segs:
-        point = []
-        for margin, max_size in zip(*[margins, volume.shape]):
-            point.append(np.random.randint(margin, max_size - margin))
-        point = tuple(point)
+    # Generate the samples of points to use for each class.
+    seg_points = sample_indices_by_value(margined_data, 1, num_class_points)
+    non_seg_points = \
+        sample_indices_by_value(margined_data, 0, num_class_points)
 
-        # Test that the point is not segmented, and add it if not.
-        if (volume.seg_data[point] != 1):
-            non_seg_points.add(point)
+    # Convert these to indices for numpy referencing.
+    seg_indices = np.array(zip(*seg_points))
+    non_seg_indices = np.array(zip(*non_seg_points))
 
-    # Create half-half map, starting with all segmented voxels.
-    half_half = volume.seg_data.astype('bool')
+    # Add back the margin offsets back on.
+    for i, margin in enumerate(margins):
+        seg_indices[i] += margin
+        non_seg_indices[i] += margin
 
-    # Convert list of points into tuple of axis indices.
-    non_seg_indices = tuple(zip(*non_seg_points))
-
-    # Add to map.
-    half_half[non_seg_indices] = True
+    # Create the map.
+    half_half = np.full(volume.shape, False, dtype='bool')
+    half_half[tuple(seg_indices)] = True
+    half_half[tuple(non_seg_indices)] = True
 
     return half_half
 
