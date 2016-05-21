@@ -54,7 +54,7 @@ class Experiment:
             # Increment tag until a valid name is found.
             while os.path.isdir(self.results_path):
                 tag += 1
-                self.name = base_name + ' ' + str(tag)
+                self.name = base_name + '_' + str(tag)
                 self.results_path = os.path.join(self.data_path,
                                                  'results',
                                                  self.name)
