@@ -11,22 +11,24 @@ import time
 # Create an experiment object to keep track of parameters and facilitate data
 # loading and save_allowed.
 exp = pdl.utils.Experiment(data_path.get(), 'single_a_conv_triple_landmark')
-exp.add_param('volume_depth', 20)
+exp.add_param('volume_depth', 60)
+exp.add_param('max_points_per_volume', 50000)
+exp.add_param('margins', (0, 20, 20))
 exp.add_param('min_seg_points', 100)
 exp.add_param('patch_shape', [1, 41, 41])
 exp.add_param('landmark_1', 'Sternal angle')
 exp.add_param('landmark_2', 'Left nipple')
 exp.add_param('landmark_3', 'Right nipple')
-exp.add_param('filter_size', (21, 21))
+exp.add_param('filter_size', (3, 3))
 exp.add_param('num_filters', 64)
-exp.add_param('patch_num_dense_units', 1000)
-exp.add_param('landmark_1_num_dense_units', 1000)
-exp.add_param('landmark_2_num_dense_units', 1000)
-exp.add_param('landmark_3_num_dense_units', 1000)
+exp.add_param('patch_num_dense_units', 500)
+exp.add_param('landmark_1_num_dense_units', 500)
+exp.add_param('landmark_2_num_dense_units', 500)
+exp.add_param('landmark_3_num_dense_units', 500)
 exp.add_param('batch_size', 5000)
 exp.add_param('update_learning_rate', 0.0001)
 exp.add_param('update_momentum', 0.9)
-exp.add_param('max_epochs', 100)
+exp.add_param('max_epochs', 200)
 
 # List and load all vols.
 vol_list = exp.list_volumes()
@@ -46,7 +48,13 @@ vols = [vol for vol in vols
         if np.sum(vol.seg_data) > exp.params['min_seg_points']]
 
 # Create training maps.
-point_maps = [pdl.extraction.half_half_map(vol) for vol in vols]
+point_maps = [
+    pdl.extraction.half_half_map(
+        vol,
+        max_points=exp.params['max_points_per_volume'],
+        margins=exp.params['margins']
+    )
+    for vol in vols]
 
 # Create an Extractor.
 ext = pdl.extraction.Extractor()
