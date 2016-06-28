@@ -11,4 +11,4 @@ data_path.py
 sandbox.py
 
 # Old training scripts
-.old_scripts/
+old_scripts/
