@@ -7,21 +7,27 @@ def standardise_volumes(volumes):
 
     # Accumulate sums required for mean/s.d. calculations, as well as a point
     # count.
-    intensity_sum = 0
-    squared_intensity_sum = 0
-    point_count = 0
+    intensity_sum = np.uint64(0)
+    squared_intensity_sum = np.uint64(0)
+    point_count = np.uint64(0)
 
-    # Iterate through all volumes to obtain these sums, using double precision
-    # to avoid overflow.
+    # Iterate through all volumes to obtain these sums, using the correct
+    # uint32 type to avoid overflow.
     for volume in volumes:
-        intensity_sum += np.sum(volume.mri_data.astype('float64'))
-        squared_intensity_sum += np.sum(volume.mri_data.astype('float64')**2)
-        point_count += volume.mri_data.size
+        current_mri_data = volume.mri_data.astype('uint64')
+        intensity_sum += np.sum(current_mri_data)
+        squared_intensity_sum += np.sum(current_mri_data**2)
+        point_count += current_mri_data.size
 
     # Calculate mean and variance from the relevant sums.
     overall_mean = intensity_sum / point_count
     overall_std = \
         np.sqrt(squared_intensity_sum / point_count - overall_mean**2)
+
+    # Cast these values to float32 so that the transformed arrays fit into
+    # memory.
+    overall_mean = overall_mean.astype('float32')
+    overall_std = overall_std.astype('float32')
 
     # Apply transformation to standardise data.
     for volume in volumes:
