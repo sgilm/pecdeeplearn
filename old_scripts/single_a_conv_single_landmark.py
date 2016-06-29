@@ -124,7 +124,7 @@ predicted_volume = ext.predict(net, test_volume, exp.params['batch_size'])
 
 # Save the volumes for comparison.
 exp.pickle_volume(test_volume, 'test_volume')
-exp.pickle_volume(predicted_volume, 'predicted_volume')
+exp.pickle_volume(predicted_volume, 'predicted_vol')
 
 # Record the parameters
 exp.record_params()

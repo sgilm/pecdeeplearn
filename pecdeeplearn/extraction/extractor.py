@@ -1,7 +1,6 @@
 from __future__ import division
 
 import numpy as np
-import itertools
 import copy
 
 from .features import FeatureError
@@ -10,15 +9,20 @@ from .volume import Volume
 
 class Extractor:
     """
-    A class to iterate over vols and extract data for use in a neural net.
+    A class to iterate over volumes and extract data for use in a neural net.
 
     Attributes
         features (dict): a dictionary with keys as feature names, and values as
             functions that extract data corresponding to that feature from
-            a vols.
+            a volume.  Each feature function should have the following form
+            exactly:
+            feature_function(
+                volume (Volume object),
+                point (3 element tuple)
+            )
         feature_sizes (dict): a dictionary with keys as feature names, and
-            values tuples that give the dimensions of the data produced by
-            extracting that feature from a vols.
+            values as tuples that give the dimension of the data produced by
+            extracting that feature from a volume.
 
     """
 
@@ -45,7 +49,7 @@ class Extractor:
     def _process_input_batch(input_batch, clean_input):
         """An internal method to copy an input batch and process its format."""
 
-        # nolearn expects single inputs to be an array, not a dictionary, so
+        # nolearn expects single inputs to be an array (not a dictionary), so
         # apply this formatting if required to input_batch and return a copy.
         if clean_input and len(input_batch.keys()) == 1:
             return copy.deepcopy(input_batch.values()[0])
@@ -99,11 +103,11 @@ class Extractor:
 
     def extract_point_feature(self, volume, point, feature_name):
         """
-        Extract data for a single feature from a single point in a vol.
+        Extract data for a single feature from a single point in a volume.
 
         Args
-            vol (Volume): the vol to extract from.
-            point (iterable): a 3-element coordinate into a vols.
+            volume (Volume): the volume to extract from.
+            point (iterable): a 3-element coordinate into a volume.
             feature_name (string): the name of the feature to extract.
 
         Returns
@@ -121,8 +125,8 @@ class Extractor:
         Extract data for all features from a single point in a vol.
 
         Args
-            vol (Volume): the vol to extract from.
-            point (iterable): a 3-element coordinate into a vols.
+            volume (Volume): the volume to extract from.
+            point (iterable): a 3-element coordinate into a volume.
 
         Returns
             point_data (dict): a dictionary with keys as feature names, and
@@ -141,12 +145,12 @@ class Extractor:
     def extract_from_map(self, volume, point_map, batch_size,
                          clean_input=True):
         """
-        Extracts data randomly from a specified map and vol.
+        Extracts data randomly from a specified map and volume.
 
         Args
-            vol (Volume): the vol to extract from.
+            volume (Volume): the volume to extract from.
             point_map (numpy.ndarray): an array that is the same size as the
-                vols.  Points corresponding to non-zero elements will be
+                volume.  Points corresponding to non-zero elements will be
                 included in the batch data.
             batch_size (int): the number of points to evaluate in a batch.
 
@@ -230,12 +234,12 @@ class Extractor:
 
     def iterate_single(self, volume, point_map, batch_size, clean_input=True):
         """
-        Extract batches of data from a vol randomly, with even coverage.
+        Extract batches of data from a volume randomly, with even coverage.
 
         Args
-            vol (Volume): the vol to extract from.
+            volume (Volume): the volume to extract from.
             point_map (numpy.ndarray): an array that is the same size as the
-                vols.  Points corresponding to non-zero elements will be
+                volume.  Points corresponding to non-zero elements will be
                 included in the batch data.
             batch_size (int): the number of points to evaluate in a batch.
 
@@ -315,11 +319,11 @@ class Extractor:
     def iterate_multiple(self, volumes, point_maps, batch_size,
                          clean_input=True):
         """
-        Extract data from a list of vols in a balanced and random way.
+        Extract data from a list of volumes in a balanced and random way.
 
         Args
-            vols (list): the list of vols to extract from.
-            point_maps (list): a list of maps to use for extraction.
+            volumes (list): the list of volumes to extract from.
+            training_maps (list): a list of maps to use for extraction.
             batch_size (int): the size of the return batches.
 
         Returns
@@ -330,11 +334,11 @@ class Extractor:
 
         """
 
-        # Check the vols and maps data is valid.
+        # Check the volumes and maps data is valid.
         if len(volumes) != len(point_maps):
-            raise Exception('Each vol must have a corresponding point map.')
+            raise Exception('Each volume must have a corresponding point map.')
 
-        # Get the sub_batch_sizes for each vol based on how many points are
+        # Get the sub_batch_sizes for each volume based on how many points are
         # being extracted from it.
         point_counts = [np.sum(point_map) for point_map in point_maps]
         point_ratios = [point_count / sum(point_counts)
@@ -350,7 +354,7 @@ class Extractor:
         input_batch, output_batch, point_batch = \
             self._create_data_arrays(batch_size)
 
-        # Create the generators for each vol.
+        # Create the generators for each volume.
         gens = [self.iterate_single(volumes[i], point_maps[i],
                                     sub_batch_sizes[i], clean_input=False)
                 for i in range(len(volumes))]
@@ -385,7 +389,7 @@ class Extractor:
                       copy.deepcopy(output_batch)
 
     def predict(self, net, volume, batch_size):
-        """Return a copy of the supplied vol with predicted segmentation."""
+        """Return a copy of the supplied volume with predicted segmentation."""
 
         # Preallocate the array for the predicted segmentation.
         predicted_seg = np.zeros(volume.shape)
@@ -400,5 +404,10 @@ class Extractor:
             point_indices = tuple(zip(*point_batch))
             predicted_seg[point_indices] = predicted_data.reshape(batch_size)
 
-        return Volume(volume.mri_data, predicted_seg,
-                      copy.deepcopy(volume.landmarks), volume.orientation)
+        return Volume(volume.name,
+                      volume.header,
+                      volume.affine,
+                      volume.mri_data,
+                      predicted_seg,
+                      copy.deepcopy(volume.landmarks)
+                      )

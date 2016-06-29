@@ -9,21 +9,22 @@ import time
 
 
 # Create an experiment object to keep track of parameters and facilitate data
-# loading and save_allowed.
-exp = pdl.utils.Experiment(data_path.get(), 'single_acs_conv_triple_landmark')
+# loading and saving.
+exp = pdl.utils.Experiment(data_path.get(), 'double_a_conv_triple_landmark')
 exp.add_param('volume_depth', 60)
 exp.add_param('max_points_per_volume', 50000)
-exp.add_param('margins', (15, 15, 15))
+exp.add_param('margins', (0, 20, 20))
 exp.add_param('min_seg_points', 100)
-exp.add_param('input_patch_shape', [1, 31, 31])
-exp.add_param('axial_patch_shape', [1, 31, 31])
-exp.add_param('coronal_patch_shape', [31, 1, 31])
-exp.add_param('sagittal_patch_shape', [31, 31, 1])
+exp.add_param('patch_shape', [1, 41, 41])
 exp.add_param('landmark_1', 'Sternal angle')
 exp.add_param('landmark_2', 'Left nipple')
 exp.add_param('landmark_3', 'Right nipple')
-exp.add_param('filter_size', (3, 3))
-exp.add_param('num_filters', 64)
+exp.add_param('patch_conv1_filter_size', (3, 3))
+exp.add_param('patch_conv1_num_filters', 64)
+exp.add_param('patch_pool1_pool_size', (2, 2))
+exp.add_param('patch_conv2_filter_size', (2, 2))
+exp.add_param('patch_conv2_num_filters', 128)
+exp.add_param('patch_pool2_pool_size', (2, 2))
 exp.add_param('patch_num_dense_units', 500)
 exp.add_param('landmark_1_num_dense_units', 500)
 exp.add_param('landmark_2_num_dense_units', 500)
@@ -46,7 +47,7 @@ vols = [vol[(centre_slices[i] - exp.params['volume_depth'] // 2):
             (centre_slices[i] + exp.params['volume_depth'] // 2)]
         for i, vol in enumerate(vols)]
 
-# Discard volumes with little segmentation data.
+# Strip away vols with little segmentation data.
 vols = [vol for vol in vols
         if np.sum(vol.seg_data) > exp.params['min_seg_points']]
 
@@ -64,19 +65,9 @@ ext = pdl.extraction.Extractor()
 
 # Add features.
 ext.add_feature(
-    feature_name='axial_patch',
+    feature_name='patch',
     feature_function=lambda volume, point:
-    pdl.extraction.patch(volume, point, exp.params['axial_patch_shape'])
-)
-ext.add_feature(
-    feature_name='coronal_patch',
-    feature_function=lambda volume, point:
-    pdl.extraction.patch(volume, point, exp.params['coronal_patch_shape'])
-)
-ext.add_feature(
-    feature_name='sagittal_patch',
-    feature_function=lambda volume, point:
-    pdl.extraction.patch(volume, point, exp.params['sagittal_patch_shape'])
+    pdl.extraction.patch(volume, point, exp.params['patch_shape'])
 )
 ext.add_feature(
     feature_name='landmark_1',
@@ -101,37 +92,26 @@ ext.add_feature(
 net = nolearn.lasagne.NeuralNet(
     layers=[
 
-        # Layers for the axial local patch.
+        # Layers for the patch.
         (lasagne.layers.InputLayer,
-         {'name': 'axial_patch',
-          'shape': tuple([None] + exp.params['input_patch_shape'])}),
+         {'name': 'patch',
+          'shape': tuple([None] + exp.params['patch_shape'])}),
         (lasagne.layers.Conv2DLayer,
-         {'name': 'axial_conv', 'num_filters': exp.params['num_filters'],
-          'filter_size': exp.params['filter_size']}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'axial_patch_dense',
-          'num_units': exp.params['patch_num_dense_units']}),
-
-        # Layers for the coronal local patch.
-        (lasagne.layers.InputLayer,
-         {'name': 'coronal_patch',
-          'shape': tuple([None] + exp.params['input_patch_shape'])}),
+         {'name': 'patch_conv1',
+          'num_filters': exp.params['patch_conv1_num_filters'],
+          'filter_size': exp.params['patch_conv1_filter_size']}),
+        (lasagne.layers.MaxPool2DLayer,
+         {'name': 'patch_pool1',
+          'pool_size': exp.params['patch_pool1_pool_size']}),
         (lasagne.layers.Conv2DLayer,
-         {'name': 'coronal_conv', 'num_filters': exp.params['num_filters'],
-          'filter_size': exp.params['filter_size']}),
+         {'name': 'patch_conv2',
+          'num_filters': exp.params['patch_conv2_num_filters'],
+          'filter_size': exp.params['patch_conv2_filter_size']}),
+        (lasagne.layers.MaxPool2DLayer,
+         {'name': 'patch_pool2',
+          'pool_size': exp.params['patch_pool2_pool_size']}),
         (lasagne.layers.DenseLayer,
-         {'name': 'coronal_patch_dense',
-          'num_units': exp.params['patch_num_dense_units']}),
-
-        # Layers for the axial local patch.
-        (lasagne.layers.InputLayer,
-         {'name': 'sagittal_patch',
-          'shape': tuple([None] + exp.params['input_patch_shape'])}),
-        (lasagne.layers.Conv2DLayer,
-         {'name': 'sagittal_conv', 'num_filters': exp.params['num_filters'],
-          'filter_size': exp.params['filter_size']}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'sagittal_patch_dense',
+         {'name': 'patch_dense',
           'num_units': exp.params['patch_num_dense_units']}),
 
         # Layers for the landmark displacement.
@@ -154,8 +134,7 @@ net = nolearn.lasagne.NeuralNet(
         # Layers for concatenation and output.
         (lasagne.layers.ConcatLayer,
          {'name': 'concat',
-          'incomings': ['axial_patch_dense', 'coronal_patch_dense',
-                        'sagittal_patch_dense', 'landmark_1_dense',
+          'incomings': ['patch_dense', 'landmark_1_dense',
                         'landmark_2_dense', 'landmark_3_dense']}),
         (lasagne.layers.DenseLayer,
          {'name': 'output', 'num_units': 2,
@@ -197,7 +176,7 @@ predicted_volume = ext.predict(net, test_volume, exp.params['batch_size'])
 
 # Save the volumes for comparison.
 exp.pickle_volume(test_volume, 'test_volume')
-exp.pickle_volume(predicted_volume, 'predicted_volume')
+exp.pickle_volume(predicted_volume, 'predicted_vol')
 
-# Record the parameters.
+# Record the parameters
 exp.record_params()

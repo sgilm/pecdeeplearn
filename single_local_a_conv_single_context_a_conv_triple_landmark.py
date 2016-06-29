@@ -9,22 +9,26 @@ import time
 
 
 # Create an experiment object to keep track of parameters and facilitate data
-# loading and save_allowed.
-exp = pdl.utils.Experiment(
-    data_path.get(),
+# loading and recording.
+exp = pdl.utils.Experiment(data_path.get())
+exp.create_experiment(
     'single_local_a_conv_single_context_a_conv_triple_landmark'
 )
-exp.add_param('volume_depth', 20)
-exp.add_param('min_seg_points', 100)
-exp.add_param('local_shape', [1, 41, 41])
-exp.add_param('context_source', [1, 81, 81])
-exp.add_param('context_target', [1, 21, 21])
+exp.add_param('num_training_volumes', 40)
+exp.add_param('max_points_per_volume', 50000)
+exp.add_param('margins', (40, 40, 0))
+exp.add_param('local_shape', [41, 41, 1])
+exp.add_param('input_local_shape', [1, 41, 41])
+exp.add_param('context_source', [81, 81, 1])
+exp.add_param('context_target', [21, 21, 1])
+exp.add_param('input_context_shape', [1, 21, 21])
 exp.add_param('landmark_1', 'Sternal angle')
 exp.add_param('landmark_2', 'Left nipple')
 exp.add_param('landmark_3', 'Right nipple')
-exp.add_param('local_filter_size', (21, 21))
-exp.add_param('context_filter_size', (11, 11))
-exp.add_param('num_filters', 64)
+exp.add_param('local_filter_size', (3, 3))
+exp.add_param('local_num_filters', 64)
+exp.add_param('context_filter_size', (3, 3))
+exp.add_param('context_num_filters', 64)
 exp.add_param('local_num_dense_units', 500)
 exp.add_param('context_num_dense_units', 500)
 exp.add_param('landmark_1_num_dense_units', 500)
@@ -35,25 +39,25 @@ exp.add_param('update_learning_rate', 0.0001)
 exp.add_param('update_momentum', 0.9)
 exp.add_param('max_epochs', 100)
 
-# List and load all vols.
+# List and load all volumes.
 vol_list = exp.list_volumes()
 vols = [exp.load_volume(vol) for vol in vol_list]
 
 # Standardise the data.
 pdl.utils.standardise_volumes(vols)
 
-# Take a set of slices centred about the left nipple.
-centre_slices = [int(vol.landmarks['Left nipple'][0]) for vol in vols]
-vols = [vol[(centre_slices[i] - exp.params['volume_depth'] // 2):
-            (centre_slices[i] + exp.params['volume_depth'] // 2)]
-        for i, vol in enumerate(vols)]
-
-# Strip away vols with little segmentation data.
-vols = [vol for vol in vols
-        if np.sum(vol.seg_data) > exp.params['min_seg_points']]
+# Split into a training set and testing set.
+training_vols = vols[:exp.params['num_training_volumes']]
+testing_vols = vols[exp.params['num_training_volumes']:]
 
 # Create training maps.
-point_maps = [pdl.extraction.half_half_map(vol) for vol in vols]
+training_maps = [
+    pdl.extraction.half_half_map(
+        vol,
+        max_points=exp.params['max_points_per_volume'],
+        margins=exp.params['margins']
+    )
+    for vol in training_vols]
 
 # Create an Extractor.
 ext = pdl.extraction.Extractor()
@@ -98,9 +102,10 @@ net = nolearn.lasagne.NeuralNet(
         # Layers for the local patch.
         (lasagne.layers.InputLayer,
          {'name': 'local',
-          'shape': tuple([None] + exp.params['local_shape'])}),
+          'shape': tuple([None] + exp.params['input_local_shape'])}),
         (lasagne.layers.Conv2DLayer,
-         {'name': 'local_conv', 'num_filters': exp.params['num_filters'],
+         {'name': 'local_conv',
+          'num_filters': exp.params['local_num_filters'],
           'filter_size': exp.params['local_filter_size']}),
         (lasagne.layers.DenseLayer,
          {'name': 'local_dense',
@@ -109,9 +114,10 @@ net = nolearn.lasagne.NeuralNet(
         # Layers for the context patch.
         (lasagne.layers.InputLayer,
          {'name': 'context',
-          'shape': tuple([None] + exp.params['context_target'])}),
+          'shape': tuple([None] + exp.params['input_context_shape'])}),
         (lasagne.layers.Conv2DLayer,
-         {'name': 'context_conv', 'num_filters': exp.params['num_filters'],
+         {'name': 'context_conv',
+          'num_filters': exp.params['context_num_filters'],
           'filter_size': exp.params['context_filter_size']}),
         (lasagne.layers.DenseLayer,
          {'name': 'context_dense',
@@ -154,32 +160,44 @@ net = nolearn.lasagne.NeuralNet(
     max_epochs=exp.params['max_epochs'],
     verbose=1
 )
+net.initialize()
 
 # Record information to be used for printing progress.
-total_points = np.sum(point_maps)
+total_points = np.count_nonzero(training_maps)
 start_time = time.time()
 
 # Iterate through and train.
 for i, (input_batch, output_batch) in \
-        enumerate(ext.iterate_multiple(vols[:-1],
-                                       point_maps[:-1],
+        enumerate(ext.iterate_multiple(training_vols, training_maps,
                                        exp.params['batch_size'])):
     net.fit(input_batch, output_batch)
-    pdl.utils.print_progress(start_time,
+    pdl.utils.print_progress(time.time() - start_time,
                              (i + 1) * exp.params['batch_size'],
                              total_points)
 print("Training complete.")
 
+# Record the time taken for training.
+exp.add_result('training_time', time.time() - start_time)
+
 # Save the network.
 exp.save_network(net, 'net')
 
-# Predict on the last volume.
-test_volume = vols[-1]
-predicted_volume = ext.predict(net, test_volume, exp.params['batch_size'])
+# Perform predictions.
+for testing_vol in testing_vols[:3]:
 
-# Save the volumes for comparison.
-exp.pickle_volume(test_volume, 'test_volume')
-exp.pickle_volume(predicted_volume, 'predicted_volume')
+    # Get the current volume for testing and perform the prediction.
+    print("Predicting on volume " + testing_vol.name + ".")
+    predicted_vol = ext.predict(net, testing_vol, exp.params['batch_size'])
+
+    # Calculate the Dice coefficient for this prediction and record it.
+    dice = pdl.utils.dice_coefficient(testing_vol.seg_data,
+                                      predicted_vol.seg_data,
+                                      margins=exp.params['margins'])
+    exp.add_result(testing_vol.name + '_dice', dice)
+
+    # Save the predictions for comparison.
+    exp.pickle_volume(predicted_vol)
+    exp.export_nii(predicted_vol)
 
 # Record the parameters
-exp.record_params()
+exp.record()

@@ -5,3 +5,10 @@
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Local files
+data_path.py
+sandbox.py
+
+# Old training scripts
+.old_scripts/

@@ -16,11 +16,32 @@ class FeatureError(Exception):
         of the except clause.
 
     """
+
     pass
 
 
 def patch(volume, point, kernel_shape):
-    """Fetch a patch of a specified size from a specified vols."""
+    """Fetch and process a patch of a specified size from given volume."""
+
+    # Get the raw data as a 3D array.
+    patch_data = raw_patch(volume, point, kernel_shape)
+
+    return reshape_patch(patch_data, kernel_shape)
+
+
+def scaled_patch(volume, point, source_kernel, target_kernel):
+    """Get a patch of specified size and resample it to a different size."""
+
+    # Get the scale factors and extract the patch.
+    scale_factors = np.array(target_kernel) / np.array(source_kernel)
+    patch_data = raw_patch(volume, point, source_kernel)
+    scaled_data = scipy.ndimage.interpolation.zoom(patch_data, scale_factors)
+
+    return reshape_patch(scaled_data, target_kernel)
+
+
+def raw_patch(volume, point, kernel_shape):
+    """Fetch raw data for a patch of specified size from a specified volume."""
 
     # Convert kernel shape to a mutable object for fixing up.
     kernel_shape = list(kernel_shape)
@@ -59,31 +80,23 @@ def patch(volume, point, kernel_shape):
     # Create a tuple of the patch's indices.
     patch_indices = tuple([slice(*frame) for frame in patch_frames])
 
-    # Extract patch data from vols.
-    patch_data = volume.mri_data[patch_indices]
+    return volume.mri_data[patch_indices]
 
-    # Create dimensions of the patch array to return (patches are used in
-    # convolutions, so the first dimension should always be 1 - for the number
-    # of colour channels.
+
+def reshape_patch(patch_data, kernel_shape):
+    """Reshape raw patch data to be compatible with neural net input."""
+
+    # Create the correct dimensions (patches are used in convolutions, so the
+    # first dimension should always be 1 - for the number of colour channels).
     patch_shape = [1] + [size for size in kernel_shape if size != 1]
 
     return np.array(patch_data).reshape(patch_shape)
 
 
-def scaled_patch(volume, point, source_kernel, target_kernel):
-    """Get a patch of specified size and resample it to a different size."""
-
-    # Get the scale factors and extract the patch.
-    scale_factors = np.array(target_kernel) / np.array(source_kernel)
-    voxel_patch = patch(volume, point, source_kernel)
-
-    return scipy.ndimage.interpolation.zoom(voxel_patch, scale_factors)
-
-
 def intensity_mean(volume, point, kernel_shape):
     """Get the mean intensity of points within a patch of specified shape."""
 
-    # Get the patch from the vols.
+    # Get the patch from the volume.
     voxel_patch = patch(volume, point, kernel_shape)
 
     return np.mean(voxel_patch)
@@ -92,7 +105,7 @@ def intensity_mean(volume, point, kernel_shape):
 def intensity_variance(volume, point, kernel_shape):
     """Get the variance of points within a patch of specified shape."""
 
-    # Get the patch from the vols.
+    # Get the patch from the volume.
     voxel_patch = patch(volume, point, kernel_shape)
 
     return np.var(voxel_patch)
@@ -104,13 +117,16 @@ def landmark_displacement(volume, point, landmark_name):
     # Convert the coordinates of the point to an array for ease of use.
     coordinate_array = np.array(point)
 
-    return volume.landmarks[landmark_name] - coordinate_array
+    # Do the same for voxel spacings.
+    spacing_array = np.array(volume.header.get_zooms()[:3])
+
+    return coordinate_array * spacing_array - volume.landmarks[landmark_name]
 
 
 def point_offset(volume, point, offset):
     """Get the intensity of a single voxel, offset from the specified point."""
 
-    # Convert the coordinates of the point to an array for ease of use.
+    # Convert the quantities into arrays for ease of use.
     point_array = np.array(point)
     offset_array = np.array(offset)
 

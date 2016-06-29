@@ -3,8 +3,6 @@ from __future__ import division
 import os
 import pickle
 import nibabel
-import numpy as np
-import copy
 
 from ..extraction import Volume
 
@@ -12,62 +10,54 @@ from ..extraction import Volume
 class Experiment:
     """A class to record parameters and results, or load previous results."""
 
-    def __init__(self, data_path, name):
+    def __init__(self, data_path):
 
-        # Record the experiment identification information.
+        # Record main data path information.
         self.data_path = data_path
-        self.name = name
 
-        # Record the results path.
-        self.results_path = os.path.join(self.data_path, 'results', self.name)
-
-        # Assume the results directory exists, and if not then create it and
-        # allow save.
-        self.save_allowed = False
-        if not os.path.isdir(self.results_path):
-            os.mkdir(self.results_path)
-            self.save_allowed = True
-
-        # Create paths for the other data subfolders.
+        # Record paths for subfolders.
+        self.results_path = os.path.join(self.data_path, 'results')
         self.mris_path = os.path.join(self.data_path, 'mris')
         self.segs_path = os.path.join(self.data_path, 'segmentations')
         self.landmarks_path = os.path.join(self.data_path, 'landmarks')
 
-        # Initialise a dictionary for holding experiment parameters.
+        # Initialise path to this exact experiment.
+        self.experiment_path = None
+
+        # Initialise dictionaries for holding parameters and results.
         self.params = {}
+        self.results = {}
 
-    def _validate_save(self):
-        """Create new directory for save if currently referencing existing."""
+    def create_experiment(self, name):
 
-        # Only change the save directory if one with existing data is currently
-        # being pointed to.
-        if not self.save_allowed:
+        # Add an index to the experiment name, and advance it until it is the
+        # latest index in the directory.
+        index = 1
+        indexed_name = name + "_" + str(index)
+        while indexed_name in os.listdir(self.results_path):
+            index += 1
+            indexed_name = name + "_" + str(index)
 
-            # Get the current tag from the end of the experiment name.
-            base_name = self.name.rstrip(' 0123456789')
-            tag_length = len(self.name) - len(base_name)
-            if tag_length == 0:
-                tag = 1
-            else:
-                tag = int(self.name[-tag_length:])
+        # Save the path to this experiment, and create a new directory.
+        self.experiment_path = os.path.join(self.results_path, indexed_name)
+        os.mkdir(self.experiment_path)
 
-            # Increment tag until a valid name is found.
-            while os.path.isdir(self.results_path):
-                tag += 1
-                self.name = base_name + '_' + str(tag)
-                self.results_path = os.path.join(self.data_path,
-                                                 'results',
-                                                 self.name)
+    def load_experiment(self, name):
 
-            # Create the new directory, and allow saves.
-            os.mkdir(self.results_path)
-            self.save_allowed = True
+        # Make sure the experiment exists before forming the experiment path.
+        if not os.path.isdir(os.path.join(self.results_path, name)):
+            raise Exception('Experiment does not exist.')
+        else:
+            self.experiment_path = os.path.join(self.results_path, name)
 
     def add_param(self, key, value):
         self.params[key] = value
 
+    def add_result(self, key, value):
+        self.results[key] = value
+
     def list_volumes(self):
-        """List the names of available vols that have the required data."""
+        """List the names of available volumes that have the required data."""
 
         # Loop through mri files and find .hdr and .img files.
         hdr_volumes = []
@@ -78,29 +68,29 @@ class Experiment:
             elif '.img' in name:
                 img_volumes.append(name.split('.')[0])
 
-        # Valid vols must have both .hdr and .img files.
+        # Valid volumes must have both .hdr and .img files.
         mri_volumes = [volume for volume in hdr_volumes if
                        volume in img_volumes]
 
-        # Loop through and list vols with segmentation files.
+        # Loop through and list volumes with segmentation files.
         seg_volumes = []
         for name in os.listdir(self.segs_path):
             volume = name.split('.')[0].replace('segpec_', '')
             seg_volumes.append(volume)
 
-        # Loop through and list vols with landmarks.
+        # Loop through and list volumes with landmarks.
         landmark_volumes = []
         for volume in next(os.walk(self.landmarks_path))[1]:
             landmark_volumes.append(volume)
 
-        # Valid vols must have mri, segmentation and landmark data.
+        # Valid volumes must have mri, segmentation and landmark data.
         volumes = [volume for volume in seg_volumes
                    if volume in mri_volumes and volume in landmark_volumes]
 
         return volumes
 
     def load_volume(self, volume_name):
-        """Load a volume of a specified name."""
+        """Load a volume with landmark, header, and affine metadata."""
 
         # Form the filenames for mri and segmentation data.
         mri_filename = volume_name + '.hdr'
@@ -110,19 +100,11 @@ class Experiment:
         mri = nibabel.load(os.path.join(self.mris_path, mri_filename))
         seg = nibabel.load(os.path.join(self.segs_path, seg_filename))
 
-        # Retrieve data.
-        volume_data = [mri.get_data(), seg.get_data()]
-
-        # Swap axes of data into the best orientation for viewing
-        # ([axial][coronal][sagittal]).
-        for i in range(len(volume_data)):
-            volume_data[i] = np.swapaxes(volume_data[i], 0, 2)
-
         # Loop through landmarks to build a dictionary.
         landmarks = {}
-        landmark_path = os.path.join(self.landmarks_path, volume_name)
-        for filename in os.listdir(landmark_path):
-            with open(os.path.join(landmark_path, filename), 'rb') as f:
+        vol_landmarks_path = os.path.join(self.landmarks_path, volume_name)
+        for filename in os.listdir(vol_landmarks_path):
+            with open(os.path.join(vol_landmarks_path, filename), 'rb') as f:
 
                 # Unpickle the pickled data.
                 # landmark_dict = pickle.load(f, encoding='latin1') for Python3
@@ -132,61 +114,73 @@ class Experiment:
                 name = landmark_dict['name']
                 data = landmark_dict['data']['default']
 
-                # Swap coordinates to be consistent with the axial orientation
-                # of the mri and segmentation data.
-                data[0], data[1] = data[1], data[0]
-                data[0], data[2] = data[2], data[0]
+                # Alter coordinates to be consistent with the orientation of
+                # the mri and segmentation data.
+                spacing = mri.get_header().get_zooms()[0]
+                size = mri.get_data().shape[0]
+                data[0], data[1] = spacing * size - data[1], data[0]
 
                 # Add to dictionary.
                 landmarks[name] = data
 
-        # Create the vols.
-        volume = Volume(volume_data[0],
-                        volume_data[1],
-                        copy.deepcopy(landmarks),
-                        'acs')
-
-        # Mirror the vols in the sagittal plane and reassign landmarks so that
-        # it is consistent.
-        volume.mirror('s')
-        volume.landmarks = landmarks
-
-        # One final mirror to put the data in the most natural shape.
-        volume.mirror('a')
+        # Create the volume.
+        volume = Volume(volume_name,
+                        mri.get_header(),
+                        mri.get_affine(),
+                        mri.get_data(),
+                        seg.get_data(),
+                        landmarks
+                        )
 
         return volume
 
-    def pickle_volume(self, volume, name):
+    def pickle_volume(self, volume):
         """Pickle a (usually predicted) volume into the results directory."""
 
-        self._validate_save()
-        with open(os.path.join(self.results_path, name), 'wb') as f:
+        with open(os.path.join(self.experiment_path, volume.name), 'wb') as f:
             pickle.dump(volume, f, -1)
 
     def unpickle_volume(self, name):
         """Unpickle a volume from the current results directory."""
 
-        with open(os.path.join(self.results_path, name), 'rb') as f:
+        with open(os.path.join(self.experiment_path, name), 'rb') as f:
             volume = pickle.load(f)
         return volume
 
     def save_network(self, net, name):
         """Save a network's weights into the results directory."""
 
-        self._validate_save()
-        net.save_params_to(os.path.join(self.results_path, name))
+        net.save_params_to(os.path.join(self.experiment_path, name))
 
     def load_network(self, net, name):
         """Load a network's weights and initialise it."""
 
-        net.load_params_from(os.path.join(self.results_path, name))
+        net.load_params_from(os.path.join(self.experiment_path, name))
         net.initialize()
 
-    def record_params(self):
-        """Record the current experiment's parameters."""
+    def record(self):
+        """Record the current experiment's parameters and results."""
 
-        # Write the params dictionary.
-        self._validate_save()
-        with open(os.path.join(self.results_path, 'params.txt'), 'w') as f:
-            for key, value in self.params.items():
-                f.write('{} = {}\n'.format(key, value))
+        # Write the params and results dictionaries.
+        labels = ['params', 'results']
+        datasets = [self.params, self.results]
+        for label, dataset in zip(labels, datasets):
+            with open(os.path.join(self.experiment_path, label + '.txt'),
+                      'w') as f:
+                for key, value in dataset.items():
+                    f.write('{} = {}\n'.format(key, value))
+
+    def export_nii(self, volume):
+        """Export a .nii file from an instance of the Volume class."""
+
+        # Create the image objects.
+        mri_img = nibabel.Nifti1Image(volume.mri_data, volume.affine,
+                                      volume.header)
+        seg_img = nibabel.Nifti1Image(volume.seg_data, volume.affine,
+                                      volume.header)
+
+        # Export the images.
+        nibabel.save(mri_img, os.path.join(self.experiment_path,
+                                           volume.name + '_mri.nii'))
+        nibabel.save(seg_img, os.path.join(self.experiment_path,
+                                           volume.name + '_seg.nii'))

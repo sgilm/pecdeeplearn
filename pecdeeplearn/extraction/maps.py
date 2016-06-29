@@ -71,7 +71,7 @@ def probability_map(volume, bins, prob_bins):
     # is segmented (based only on its intensity value).
     prob_map = prob_bins[voxel_bin_ind.flatten() - 1].reshape(volume.shape)
 
-    # Threshold according to random vols and voxel probabilities.
+    # Threshold according to random volumes and voxel probabilities.
     prob_map[prob_map < random_volume] = 0
 
     return prob_map
@@ -93,12 +93,12 @@ def half_half_map(volume, max_points=None, margins=(0, 0, 0)):
     # out of those points where the array contains a certain value.
     def sample_indices_by_value(array, value, max_samples):
         indices = np.where(array == value)
-        points = zip(*indices)
+        points = np.array(indices).T
 
         if len(points) < max_samples:
             return points
         else:
-            return random.sample(points, max_samples)
+            return np.array(random.sample(points, max_samples)).T
 
     # Create slices to use for extracting the inner part of the volume.
     margined_slices = [slice(margin, max_size - margin)
@@ -121,15 +121,11 @@ def half_half_map(volume, max_points=None, margins=(0, 0, 0)):
         return np.full(volume.shape, False, dtype='bool')
 
     # Generate the samples of points to use for each class.
-    seg_points = sample_indices_by_value(margined_data, 1, num_class_points)
-    non_seg_points = \
+    seg_indices = sample_indices_by_value(margined_data, 1, num_class_points)
+    non_seg_indices = \
         sample_indices_by_value(margined_data, 0, num_class_points)
 
-    # Convert these to indices for numpy referencing.
-    seg_indices = np.array(zip(*seg_points))
-    non_seg_indices = np.array(zip(*non_seg_points))
-
-    # Add back the margin offsets back on.
+    # Add the margin offsets back on.
     for i, margin in enumerate(margins):
         seg_indices[i] += margin
         non_seg_indices[i] += margin
