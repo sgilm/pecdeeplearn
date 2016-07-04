@@ -29,6 +29,15 @@ def patch(volume, point, kernel_shape):
     return reshape_patch(patch_data, kernel_shape)
 
 
+def flat_patch(volume, point, kernel_shape):
+    """Fetch and return a flat patch of a specified size from given volume."""
+
+    # Get the raw data as a 3D array.
+    patch_data = raw_patch(volume, point, kernel_shape)
+
+    return patch_data.reshape(np.prod(kernel_shape))
+
+
 def scaled_patch(volume, point, source_kernel, target_kernel):
     """Get a patch of specified size and resample it to a different size."""
 
