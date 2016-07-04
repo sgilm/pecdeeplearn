@@ -102,6 +102,25 @@ class Volume:
         # Show the plot.
         plt.show()
 
+    def bounding_box(self, margins=None):
+        """Find the indices of the segmentation's bounding box."""
+
+        # Get the indices of the points defining the bounding box.
+        seg_indices = np.nonzero(self.seg_data)
+        min_bounding_indices = np.min(seg_indices, axis=1)
+        max_bounding_indices = np.max(seg_indices, axis=1)
+
+        # Apply the margins to the bounding box.
+        if margins is not None:
+            for i, margin in enumerate(margins):
+                min_bounding_indices[i] -= margin
+                min_bounding_indices[i] = max(min_bounding_indices[i], 0)
+                max_bounding_indices[i] += margin
+                max_bounding_indices[i] = min(max_bounding_indices[i],
+                                              self.shape[i] - 1)
+
+        return min_bounding_indices, max_bounding_indices
+
     def __getitem__(self, indices):
         """
         Define volume slicing behaviour.
