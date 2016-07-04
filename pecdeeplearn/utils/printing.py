@@ -3,9 +3,9 @@ from __future__ import division
 import time
 
 
-def print_progress(elapsed_time, points_processed, total_points):
+def print_progress(elapsed_time, units_complete, total_units):
 
-    frac_complete = points_processed / total_points
+    frac_complete = units_complete / total_units
     remaining_time = ((1 - frac_complete) / frac_complete) * elapsed_time
 
     def hours_minutes_seconds(total_secs):
