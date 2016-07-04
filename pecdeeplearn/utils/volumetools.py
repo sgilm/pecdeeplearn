@@ -12,7 +12,7 @@ def standardise_volumes(volumes):
     point_count = np.uint64(0)
 
     # Iterate through all volumes to obtain these sums, using the correct
-    # uint32 type to avoid overflow.
+    # uint64 type to avoid overflow.
     for volume in volumes:
         current_mri_data = volume.mri_data.astype('uint64')
         intensity_sum += np.sum(current_mri_data)
@@ -35,26 +35,31 @@ def standardise_volumes(volumes):
         volume.mri_data = volume.mri_data / overall_std
 
 
-def dice_coefficient(first_array, second_array, margins=(0, 0, 0)):
+def dice_coefficient(first_array, second_array):
 
     # Check the array dimensions match.
     if first_array.shape != second_array.shape:
         raise Exception('Array dimensions do not match.')
 
-    # Create slices to use for extracting the inner part of the arrays.
-    margined_slices = [slice(margin, max_size - margin)
-                       for margin, max_size in zip(margins, first_array.shape)]
-
-    # Extract the inner part (within the margins).
-    margined_first_array = first_array[margined_slices]
-    margined_second_array = second_array[margined_slices]
-
     # Find the number of nonzero points the arrays have in common.
     intersection_count = np.count_nonzero(
-        np.logical_and(margined_first_array, margined_second_array))
+        np.logical_and(first_array, second_array))
 
     # Find the number of elements in the union of the array's nonzero points.
-    union_count = np.count_nonzero(margined_first_array) + \
-                  np.count_nonzero(margined_second_array)
+    union_count = np.count_nonzero(first_array) + \
+                  np.count_nonzero(second_array)
 
     return 2 * intersection_count / union_count
+
+
+def prediction_stats(ground_truth, prediction):
+    """Find basic prediction statistics on voxel counts."""
+
+    correct_positives = np.count_nonzero(
+        np.logical_and(ground_truth == 1, prediction == 1))
+    false_positives = np.count_nonzero(
+        np.logical_and(ground_truth == 0, prediction == 1))
+    false_negatives = np.count_nonzero(
+        np.logical_and(ground_truth == 1, prediction == 0))
+
+    return correct_positives, false_positives, false_negatives
