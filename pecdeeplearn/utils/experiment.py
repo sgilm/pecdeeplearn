@@ -1,8 +1,9 @@
 from __future__ import division
 
 import os
-import pickle
+import cPickle as pickle
 import nibabel
+import sys
 
 from ..extraction import Volume
 
@@ -29,6 +30,7 @@ class Experiment:
         self.results = {}
 
     def create_experiment(self, name):
+        """Create new directory for an experiment and initialise the class."""
 
         # Add an index to the experiment name, and advance it until it is the
         # latest index in the directory.
@@ -43,6 +45,7 @@ class Experiment:
         os.mkdir(self.experiment_path)
 
     def load_experiment(self, name):
+        """Initialise the experiment to point to an existing one."""
 
         # Make sure the experiment exists before forming the experiment path.
         if not os.path.isdir(os.path.join(self.results_path, name)):
@@ -87,18 +90,24 @@ class Experiment:
         volumes = [volume for volume in seg_volumes
                    if volume in mri_volumes and volume in landmark_volumes]
 
-        return volumes
+        return sorted(volumes)
 
-    def load_volume(self, volume_name):
+    def load_volume(self, volume_name, experiment=False):
         """Load a volume with landmark, header, and affine metadata."""
 
-        # Form the filenames for mri and segmentation data.
+        # Load the mri data, which always comes from the same directory.
         mri_filename = volume_name + '.hdr'
-        seg_filename = 'segpec_' + volume_name + '.nii'
-
-        # Load mri and segmentation data.
         mri = nibabel.load(os.path.join(self.mris_path, mri_filename))
-        seg = nibabel.load(os.path.join(self.segs_path, seg_filename))
+
+        # Load the segmentation data from a different location depending on the
+        # input argument.
+        if experiment:
+            seg_filename = volume_name + '_seg.nii'
+            seg = nibabel.load(os.path.join(self.experiment_path,
+                                            seg_filename))
+        else:
+            seg_filename = 'segpec_' + volume_name + '.nii'
+            seg = nibabel.load(os.path.join(self.segs_path, seg_filename))
 
         # Loop through landmarks to build a dictionary.
         landmarks = {}
@@ -124,13 +133,14 @@ class Experiment:
                 landmarks[name] = data
 
         # Create the volume.
-        volume = Volume(volume_name,
-                        mri.get_header(),
-                        mri.get_affine(),
-                        mri.get_data(),
-                        seg.get_data(),
-                        landmarks
-                        )
+        volume = Volume(
+            volume_name,
+            mri.get_header(),
+            mri.get_affine(),
+            mri.get_data(),
+            seg.get_data(),
+            landmarks
+        )
 
         return volume
 
@@ -147,12 +157,30 @@ class Experiment:
             volume = pickle.load(f)
         return volume
 
-    def save_network(self, net, name):
+    def pickle_network(self, net, name):
+        """Pickle a network into the results directory."""
+
+        # Increase the default recursion limit to allow pickling.
+        sys.setrecursionlimit(10000)
+
+        # Pickle the network.
+        with open(os.path.join(self.experiment_path, name), 'wb') as f:
+            pickle.dump(net, f, -1)
+
+    def unpickle_network(self, name):
+        """Unpickle a network from the results directory."""
+
+        # Unpickle the network.
+        with open(os.path.join(self.experiment_path, name), 'rb') as f:
+            network = pickle.load(f)
+        return network
+
+    def save_network_weights(self, net, name):
         """Save a network's weights into the results directory."""
 
         net.save_params_to(os.path.join(self.experiment_path, name))
 
-    def load_network(self, net, name):
+    def load_network_weights(self, net, name):
         """Load a network's weights and initialise it."""
 
         net.load_params_from(os.path.join(self.experiment_path, name))
@@ -170,17 +198,19 @@ class Experiment:
                 for key, value in dataset.items():
                     f.write('{} = {}\n'.format(key, value))
 
-    def export_nii(self, volume):
+    def export_nii(self, volume, mri=False, seg=True):
         """Export a .nii file from an instance of the Volume class."""
 
-        # Create the image objects.
-        mri_img = nibabel.Nifti1Image(volume.mri_data, volume.affine,
-                                      volume.header)
-        seg_img = nibabel.Nifti1Image(volume.seg_data, volume.affine,
-                                      volume.header)
+        # Export the mri data.
+        if mri:
+            mri_img = nibabel.Nifti1Image(volume.mri_data, volume.affine,
+                                          volume.header)
+            nibabel.save(mri_img, os.path.join(self.experiment_path,
+                                               volume.name + '_mri.nii'))
 
-        # Export the images.
-        nibabel.save(mri_img, os.path.join(self.experiment_path,
-                                           volume.name + '_mri.nii'))
-        nibabel.save(seg_img, os.path.join(self.experiment_path,
-                                           volume.name + '_seg.nii'))
+        # Export the segmentation data.
+        if seg:
+            seg_img = nibabel.Nifti1Image(volume.seg_data, volume.affine,
+                                          volume.header)
+            nibabel.save(seg_img, os.path.join(self.experiment_path,
+                                               volume.name + '_seg.nii'))
