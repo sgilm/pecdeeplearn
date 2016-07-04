@@ -154,7 +154,7 @@ except RuntimeError:
 # Perform predictions on all testing volumes in the set.
 print('Beginning predictions.\n')
 prediction_start_time = time.time()
-for i, testing_vol in enumerate(testing_vols):
+for i, testing_vol in enumerate(testing_vols)[:5]:
 
     # Perform the prediction on the current testing volume.
     print("Predicting on volume " + testing_vol.name + ".")
