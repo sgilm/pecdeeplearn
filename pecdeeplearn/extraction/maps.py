@@ -86,19 +86,48 @@ def segmentation_map(volumes):
     return counts.astype(np.bool)
 
 
+def full_map(volume):
+    """Create a training map encompassing the whole of the input vol."""
+
+    return np.ones(volume.shape)
+
+
+def sample_indices_by_value(array, value, max_samples, forbidden_indices=None):
+    """Take a random sample of non-forbidden points holding a certain value."""
+
+    # Get all points in the array that match the target value.
+    points = np.array(np.where(array == value)).T
+
+    # If there are some forbidden points, then remove them.
+    if forbidden_indices is not None:
+
+        # Copying the points array is required to allow the necessary views to
+        # be taken.
+        points = points.copy()
+
+        # Reshape the forbidden input into a list of points (with a size of 3
+        # along the second axis).
+        forbidden_points = forbidden_indices.T
+
+        # Take views into each points array that allow comparison of rows, then
+        # take the set difference and reshape back into an array of points.
+        points_rows = points.view([('', points.dtype)] * points.shape[1])
+        forbidden_points_rows = \
+            forbidden_points.view(
+                [('', forbidden_points.dtype)] * forbidden_points.shape[1])
+        points = np.setdiff1d(points_rows, forbidden_points_rows).view(
+            points.dtype).reshape(-1, points.shape[1])
+
+    # Return indices (with a size of 3 along the first axis), rather that
+    # points (with a size of 3 along the second axis).
+    if len(points) < max_samples:
+        return points.T
+    else:
+        return np.array(random.sample(points, max_samples)).T
+
+
 def half_half_map(volume, max_points=None, margins=(0, 0, 0)):
     """Create training map with equal # segmented and non-segmented voxels."""
-
-    # Define a function to take a random sample of point indices from an array,
-    # out of those points where the array contains a certain value.
-    def sample_indices_by_value(array, value, max_samples):
-        indices = np.where(array == value)
-        points = np.array(indices).T
-
-        if len(points) < max_samples:
-            return points
-        else:
-            return np.array(random.sample(points, max_samples)).T
 
     # Create slices to use for extracting the inner part of the volume.
     margined_slices = [slice(margin, max_size - margin)
@@ -138,7 +167,87 @@ def half_half_map(volume, max_points=None, margins=(0, 0, 0)):
     return half_half
 
 
-def full_map(volume):
-    """Create a training map encompassing the whole of the input vol."""
+def targeted_map(volume, max_points=None, margins=(0, 0, 0),
+                 boundary_prop=0.5, boundary_prox=2):
 
-    return np.ones(volume.shape)
+    # Create slices to use for extracting the inner part of the volume.
+    margined_slices = [slice(margin, max_size - margin)
+                       for margin, max_size in zip(margins, volume.shape)]
+
+    # Extract the inner part (within the margins).
+    margined_data = volume.seg_data[margined_slices]
+
+    # Count number of segmented voxels and non-segmented voxels.
+    num_seg_points = np.count_nonzero(margined_data == 1)
+    num_non_seg_points = np.count_nonzero(margined_data == 0)
+
+    # Find the number of points to sample for each class.
+    num_points = min(num_seg_points, num_non_seg_points) * 2
+    if max_points is not None:
+        num_points = min(num_points, max_points)
+
+    # Return a blank map if either class is empty.
+    if num_points == 0:
+        return np.full(volume.shape, False, dtype='bool')
+
+    # Split the point counts according to the boundary proportion.
+    num_boundary_points = int(boundary_prop * num_points)
+    num_class_points = (num_points - num_boundary_points) // 2
+
+    # Find the indices of the bounding box to extract.
+    min_bounding_indices, max_bounding_indices = volume.bounding_box()
+
+    # Extract the bounding box of all segmented points in the volume.
+    bounding_box_slices = [slice(start - boundary_prox,
+                                 stop + 1 + boundary_prox)
+                           for start, stop
+                           in zip(min_bounding_indices, max_bounding_indices)]
+    bounding_box = volume.seg_data[bounding_box_slices]
+
+    # Initialise a set to keep boundary points in.
+    boundary_points = set()
+
+    # Keep sampling points until the set is full.
+    while len(boundary_points) < num_boundary_points:
+
+        # Generate a random point.
+        point = np.ndarray(3, dtype='int64')
+        for i, max_size in enumerate(bounding_box.shape):
+            point[i] = \
+                np.random.randint(boundary_prox, max_size - boundary_prox)
+
+        # Form the slices used to test the neighbourhood of the point.
+        test_slices = [slice(index - boundary_prox, index + boundary_prox + 1)
+                       for index in point]
+
+        # If the neighbourhood contains more than one class, add it to the set
+        # of boundary points.
+        if np.unique(bounding_box[test_slices]).size > 1:
+            boundary_points.add(tuple(point))
+
+    # Convert the points into a better form for indexing an np.ndarray.
+    boundary_indices = np.array(list(boundary_points)).T
+
+    # Add the bounding box offsets back on.
+    for i, offset in enumerate(min_bounding_indices):
+        boundary_indices[i] += offset
+
+    # Generate the samples of points to use for each class.
+    seg_indices = sample_indices_by_value(margined_data, 1, num_class_points,
+                                          forbidden_indices=boundary_indices)
+    non_seg_indices = \
+        sample_indices_by_value(margined_data, 0, num_class_points,
+                                forbidden_indices=boundary_indices)
+
+    # Add the margin offsets back on.
+    for i, margin in enumerate(margins):
+        seg_indices[i] += margin
+        non_seg_indices[i] += margin
+
+    # Create the map.
+    targeted = np.full(volume.shape, False, dtype='bool')
+    targeted[tuple(boundary_indices)] = True
+    targeted[tuple(seg_indices)] = True
+    targeted[tuple(non_seg_indices)] = True
+
+    return targeted
