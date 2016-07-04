@@ -388,26 +388,36 @@ class Extractor:
                 yield self._process_input_batch(input_batch, clean_input),\
                       copy.deepcopy(output_batch)
 
-    def predict(self, net, volume, batch_size):
+    def predict(self, net, volume, batch_size, bounds=None):
         """Return a copy of the supplied volume with predicted segmentation."""
 
         # Preallocate the array for the predicted segmentation.
-        predicted_seg = np.zeros(volume.shape)
+        predicted_seg = np.zeros(volume.shape, dtype='uint16')
+
+        # Create the map defining the points to predict on, and restrict these
+        # points to be within the defined bounds if necessary.
+        if bounds is None:
+            point_map = np.ones(volume.shape, dtype='bool')
+        else:
+            point_map = np.zeros(volume.shape, dtype='bool')
+            bound_slices = [slice(start, stop + 1)
+                            for start, stop in zip(*bounds)]
+            point_map[bound_slices] = True
 
         # Iterate through to predict values, and record.
         for input_batch, _, point_batch in \
-                self.extract_from_map(volume, np.ones(volume.shape),
-                                      batch_size):
+                self.extract_from_map(volume, point_map, batch_size):
 
             # Predict and assign the values to the new volume.
             predicted_data = net.predict(input_batch)
             point_indices = tuple(zip(*point_batch))
             predicted_seg[point_indices] = predicted_data.reshape(batch_size)
 
-        return Volume(volume.name,
-                      volume.header,
-                      volume.affine,
-                      volume.mri_data,
-                      predicted_seg,
-                      copy.deepcopy(volume.landmarks)
-                      )
+        return Volume(
+            volume.name,
+            volume.header,
+            volume.affine,
+            volume.mri_data,
+            predicted_seg,
+            copy.deepcopy(volume.landmarks)
+        )
