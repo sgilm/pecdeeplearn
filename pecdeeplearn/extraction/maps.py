@@ -198,10 +198,12 @@ def targeted_map(volume, max_points=None, margins=(0, 0, 0),
     min_bounding_indices, max_bounding_indices = volume.bounding_box()
 
     # Extract the bounding box of all segmented points in the volume.
-    bounding_box_slices = [slice(start - boundary_prox,
-                                 stop + 1 + boundary_prox)
-                           for start, stop
-                           in zip(min_bounding_indices, max_bounding_indices)]
+    bounding_box_slices = \
+        [slice(max(start - boundary_prox, 0),
+               min(stop + 1 + boundary_prox, size))
+         for start, stop, size in zip(min_bounding_indices,
+                                      max_bounding_indices,
+                                      volume.shape)]
     bounding_box = volume.seg_data[bounding_box_slices]
 
     # Initialise a set to keep boundary points in.
