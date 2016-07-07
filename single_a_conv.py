@@ -24,7 +24,7 @@ exp.add_param('local_patch_dense_num_units', 1000)
 exp.add_param('batch_size', 50000)
 exp.add_param('update_learning_rate', 0.0001)
 exp.add_param('update_momentum', 0.9)
-exp.add_param('max_epochs', 1000)
+exp.add_param('max_epochs', 100)
 exp.add_param('validation_prop', 0.2)
 
 # List and load all volumes.
