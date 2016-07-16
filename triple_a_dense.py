@@ -111,7 +111,9 @@ net = nolearn.lasagne.NeuralNet(
 net.initialize()
 
 # Record information to be used for printing training progress.
-total_points = np.count_nonzero(training_maps)
+total_points = 0
+for training_map in training_maps:
+    total_points += np.count_nonzero(training_map)
 elapsed_training_time = 0
 
 # Train the network using a hybrid online/mini-batch approach.
