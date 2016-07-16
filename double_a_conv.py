@@ -13,7 +13,7 @@ import numpy as np
 exp = pdl.utils.Experiment(data_path.get())
 exp.create_experiment('double_a_conv')
 exp.add_param('num_training_volumes', 45)
-exp.add_param('max_points_per_volume', 50000)
+exp.add_param('max_points_per_volume', 25000)
 exp.add_param('margins', (12, 12, 0))
 exp.add_param('local_patch_shape', [25, 25, 1])
 exp.add_param('local_patch_input_shape', [1, 25, 25])
@@ -24,15 +24,18 @@ exp.add_param('local_patch_conv2_filter_size', (5, 5))
 exp.add_param('local_patch_conv2_num_filters', 128)
 exp.add_param('local_patch_pool2_pool_size', (2, 2))
 exp.add_param('local_patch_dense_num_units', 1000)
-exp.add_param('batch_size', 50000)
-exp.add_param('update_learning_rate', 0.0001)
+exp.add_param('batch_size', 5000)
+exp.add_param('update_learning_rate', 0.001)
 exp.add_param('update_momentum', 0.9)
 exp.add_param('max_epochs', 100)
 exp.add_param('validation_prop', 0.2)
 
 # List and load all volumes.
 vol_list = exp.list_volumes()
-for vol_name in ['VL00033', 'VL00034']:
+test_vol_names = ['VL00080', 'VL00093', 'VL00028', 'VL00077', 'VL00094',
+                  'VL00057', 'VL00024', 'VL00066', 'VL00063', 'VL00062',
+                  'VL00075', 'VL00069', 'VL00038', 'VL00058', 'VL00031']
+for vol_name in test_vol_names:
     try:
         vol_list.remove(vol_name)
         vol_list.append(vol_name)
@@ -49,7 +52,7 @@ testing_vols = vols[exp.params['num_training_volumes']:]
 
 # Create training maps.
 training_maps = [
-    pdl.extraction.targeted_map(
+    pdl.extraction.half_half_map(
         vol,
         max_points=exp.params['max_points_per_volume'],
         margins=exp.params['margins']
@@ -96,13 +99,16 @@ net = nolearn.lasagne.NeuralNet(
 
         # Layer for output.
         (lasagne.layers.DenseLayer,
-         {'name': 'output', 'num_units': 2,
-          'nonlinearity': lasagne.nonlinearities.softmax}),
+         {'name': 'output', 'num_units': 1,
+          'nonlinearity': lasagne.nonlinearities.sigmoid}),
 
     ],
 
+    # Predict segmentation probabilities.
+    regression=True,
+
     # Loss function.
-    objective_loss_function=lasagne.objectives.categorical_crossentropy,
+    objective_loss_function=lasagne.objectives.binary_crossentropy,
 
     # Optimization method.
     update=lasagne.updates.nesterov_momentum,
@@ -176,7 +182,14 @@ for i, testing_vol in list(enumerate(testing_vols))[:5]:
     exp.add_result(testing_vol.name + '_false_negatives', false_negatives)
     exp.add_result(testing_vol.name + '_dice', dice)
 
-    # Save the prediction for comparison.
+    # Save the prediction probabilities for comparison.
+    predicted_name = predicted_vol.name
+    predicted_vol.name += "_prob"
+    exp.export_nii(predicted_vol)
+
+    # Save the rounded segmentation.
+    predicted_vol.name = predicted_name
+    predicted_vol.seg_data = np.around(predicted_vol.seg_data)
     exp.export_nii(predicted_vol)
 
     # Print prediction progress.
