@@ -40,7 +40,7 @@ class Extractor:
             input_batch[name] = np.zeros(data_shape, dtype='float32')
 
         # Create the output and point batch arrays.
-        output_batch = np.zeros(batch_size, dtype='int32')
+        output_batch = np.zeros(batch_size, dtype='float32')
         point_batch = np.zeros([batch_size, 3], dtype='int32')
 
         return input_batch, output_batch, point_batch
@@ -392,7 +392,7 @@ class Extractor:
         """Return a copy of the supplied volume with predicted segmentation."""
 
         # Preallocate the array for the predicted segmentation.
-        predicted_seg = np.zeros(volume.shape, dtype='uint16')
+        predicted_seg = np.zeros(volume.shape, dtype='float32')
 
         # Create the map defining the points to predict on, and restrict these
         # points to be within the defined bounds if necessary.
