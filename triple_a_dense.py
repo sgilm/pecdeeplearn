@@ -159,6 +159,16 @@ for i, testing_vol in list(enumerate(testing_vols))[:5]:
         ]
     )
 
+    # Save the prediction probabilities for comparison.
+    predicted_name = predicted_vol.name
+    predicted_vol.name += "_prob"
+    exp.export_nii(predicted_vol)
+
+    # Save the rounded segmentation.
+    predicted_vol.name = predicted_name
+    predicted_vol.seg_data = np.around(predicted_vol.seg_data).astype('int16')
+    exp.export_nii(predicted_vol)
+
     # Calculate statistics for this prediction and record them.
     correct_positives, false_positives, false_negatives = \
         pdl.utils.prediction_stats(testing_vol.seg_data,
@@ -169,16 +179,6 @@ for i, testing_vol in list(enumerate(testing_vols))[:5]:
     exp.add_result(testing_vol.name + '_false_positives', false_positives)
     exp.add_result(testing_vol.name + '_false_negatives', false_negatives)
     exp.add_result(testing_vol.name + '_dice', dice)
-
-    # Save the prediction probabilities for comparison.
-    predicted_name = predicted_vol.name
-    predicted_vol.name += "_prob"
-    exp.export_nii(predicted_vol)
-
-    # Save the rounded segmentation.
-    predicted_vol.name = predicted_name
-    predicted_vol.seg_data = np.around(predicted_vol.seg_data)
-    exp.export_nii(predicted_vol)
 
     # Print prediction progress.
     pdl.utils.print_progress(time.time() - prediction_start_time,
