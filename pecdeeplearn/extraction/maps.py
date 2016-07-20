@@ -134,7 +134,7 @@ def half_half_map(volume, max_points=None, margins=(0, 0, 0)):
                        for margin, max_size in zip(margins, volume.shape)]
 
     # Extract the inner part (within the margins).
-    margined_data = volume.seg_data[margined_slices]
+    margined_data = np.around(volume.seg_data[margined_slices]).astype('bool')
 
     # Count number of segmented voxels and non-segmented voxels.
     num_seg_points = np.count_nonzero(margined_data == 1)
