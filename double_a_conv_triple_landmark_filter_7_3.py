@@ -11,27 +11,31 @@ import numpy as np
 # Create an experiment object to keep track of parameters and facilitate data
 # loading and saving.
 exp = pdl.utils.Experiment(data_path.get())
-exp.create_experiment('quadruple_a_dense')
+exp.create_experiment('double_a_conv_triple_landmark_filter_7_3')
 exp.add_param('num_training_volumes', 45)
 exp.add_param('max_points_per_volume', 25000)
 exp.add_param('margins', (12, 12, 0))
 exp.add_param('local_patch_shape', [25, 25, 1])
-exp.add_param('local_patch_input_shape', [25 * 25])
-exp.add_param('local_patch_dense1_num_units', 1000)
-exp.add_param('local_patch_dense2_num_units', 1000)
-exp.add_param('local_patch_dense3_num_units', 1000)
-exp.add_param('local_patch_dense4_num_units', 1000)
-exp.add_param('local_patch_dense5_num_units', 1000)
-exp.add_param('local_patch_dense6_num_units', 1000)
-exp.add_param('local_patch_dense7_num_units', 1000)
-exp.add_param('local_patch_dense8_num_units', 1000)
-exp.add_param('local_patch_dense9_num_units', 1000)
-exp.add_param('local_patch_dense10_num_units', 1000)
+exp.add_param('local_patch_input_shape', [1, 25, 25])
+exp.add_param('local_patch_conv1_filter_size', (7, 7))
+exp.add_param('local_patch_conv1_num_filters', 64)
+exp.add_param('local_patch_pool1_pool_size', (2, 2))
+exp.add_param('local_patch_conv2_filter_size', (3, 3))
+exp.add_param('local_patch_conv2_num_filters', 128)
+exp.add_param('local_patch_pool2_pool_size', (2, 2))
+exp.add_param('landmark_1', 'Sternal angle')
+exp.add_param('landmark_2', 'Left nipple')
+exp.add_param('landmark_3', 'Right nipple')
+exp.add_param('landmark_1_dense_num_units', 1000)
+exp.add_param('landmark_2_dense_num_units', 1000)
+exp.add_param('landmark_3_dense_num_units', 1000)
+exp.add_param('join_dense_num_units', 1000)
 exp.add_param('batch_size', 5000)
 exp.add_param('update_learning_rate', 0.001)
 exp.add_param('update_momentum', 0.9)
 exp.add_param('max_epochs', 100)
 exp.add_param('validation_prop', 0.2)
+exp.add_param('prediction_margins', (25, 25, 25))
 
 # List and load all volumes.
 vol_list = exp.list_volumes()
@@ -69,7 +73,25 @@ ext = pdl.extraction.Extractor()
 ext.add_feature(
     feature_name='local_patch',
     feature_function=lambda volume, point:
-    pdl.extraction.flat_patch(volume, point, exp.params['local_patch_shape'])
+    pdl.extraction.patch(volume, point, exp.params['local_patch_shape'])
+)
+ext.add_feature(
+    feature_name='landmark_1',
+    feature_function=lambda volume, point:
+    pdl.extraction.landmark_displacement(
+        volume, point, exp.params['landmark_1'])
+)
+ext.add_feature(
+    feature_name='landmark_2',
+    feature_function=lambda volume, point:
+    pdl.extraction.landmark_displacement(
+        volume, point, exp.params['landmark_2'])
+)
+ext.add_feature(
+    feature_name='landmark_3',
+    feature_function=lambda volume, point:
+    pdl.extraction.landmark_displacement(
+        volume, point, exp.params['landmark_3'])
 )
 
 # Create the net.
@@ -80,38 +102,50 @@ net = nolearn.lasagne.NeuralNet(
         (lasagne.layers.InputLayer,
          {'name': 'local_patch',
           'shape': tuple([None] + exp.params['local_patch_input_shape'])}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'local_patch_dense1',
-          'num_units': exp.params['local_patch_dense1_num_units']}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'local_patch_dense2',
-          'num_units': exp.params['local_patch_dense2_num_units']}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'local_patch_dense3',
-          'num_units': exp.params['local_patch_dense3_num_units']}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'local_patch_dense4',
-          'num_units': exp.params['local_patch_dense4_num_units']}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'local_patch_dense5',
-          'num_units': exp.params['local_patch_dense5_num_units']}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'local_patch_dense6',
-          'num_units': exp.params['local_patch_dense6_num_units']}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'local_patch_dense7',
-          'num_units': exp.params['local_patch_dense7_num_units']}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'local_patch_dense8',
-          'num_units': exp.params['local_patch_dense8_num_units']}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'local_patch_dense9',
-          'num_units': exp.params['local_patch_dense9_num_units']}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'local_patch_dense10',
-          'num_units': exp.params['local_patch_dense10_num_units']}),
+        (lasagne.layers.Conv2DLayer,
+         {'name': 'local_patch_conv1',
+          'num_filters': exp.params['local_patch_conv1_num_filters'],
+          'filter_size': exp.params['local_patch_conv1_filter_size'],
+          'pad': 'same'}),
+        (lasagne.layers.MaxPool2DLayer,
+         {'name': 'local_patch_pool1',
+          'pool_size': exp.params['local_patch_pool1_pool_size']}),
+        (lasagne.layers.Conv2DLayer,
+         {'name': 'local_patch_conv2',
+          'num_filters': exp.params['local_patch_conv2_num_filters'],
+          'filter_size': exp.params['local_patch_conv2_filter_size'],
+          'pad': 'same'}),
+        (lasagne.layers.MaxPool2DLayer,
+         {'name': 'local_patch_pool2',
+          'pool_size': exp.params['local_patch_pool2_pool_size']}),
+        (lasagne.layers.FlattenLayer,
+         {'name': 'local_patch_flat'}),
 
-        # Layer for output.
+        # Layers for the landmark displacement.
+        (lasagne.layers.InputLayer,
+         {'name': 'landmark_1', 'shape': (None, 3)}),
+        (lasagne.layers.DenseLayer,
+         {'name': 'landmark_1_dense',
+          'num_units': exp.params['landmark_1_dense_num_units']}),
+        (lasagne.layers.InputLayer,
+         {'name': 'landmark_2', 'shape': (None, 3)}),
+        (lasagne.layers.DenseLayer,
+         {'name': 'landmark_2_dense',
+          'num_units': exp.params['landmark_2_dense_num_units']}),
+        (lasagne.layers.InputLayer,
+         {'name': 'landmark_3', 'shape': (None, 3)}),
+        (lasagne.layers.DenseLayer,
+         {'name': 'landmark_3_dense',
+          'num_units': exp.params['landmark_3_dense_num_units']}),
+
+        # Layers for concatenation and output.
+        (lasagne.layers.ConcatLayer,
+         {'name': 'concat',
+          'incomings': ['local_patch_flat', 'landmark_1_dense',
+                        'landmark_2_dense', 'landmark_3_dense']}),
+        (lasagne.layers.DenseLayer,
+         {'name': 'join_dense',
+          'num_units': exp.params['join_dense_num_units']}),
         (lasagne.layers.DenseLayer,
          {'name': 'output', 'num_units': 1,
           'nonlinearity': lasagne.nonlinearities.sigmoid}),
@@ -173,7 +207,7 @@ except RuntimeError:
 # Perform predictions on all testing volumes in the set.
 print('Beginning predictions.\n')
 prediction_start_time = time.time()
-for i, testing_vol in list(enumerate(testing_vols))[:5]:
+for i, testing_vol in list(enumerate(testing_vols)):
 
     # Perform the prediction on the current testing volume.
     print("Predicting on volume " + testing_vol.name + ".")
@@ -181,10 +215,8 @@ for i, testing_vol in list(enumerate(testing_vols))[:5]:
         net,
         testing_vol,
         exp.params['batch_size'],
-        bounds=[
-            exp.params['margins'],
-            np.array(testing_vol.shape) - 1 - np.array(exp.params['margins'])
-        ]
+        bounds=testing_vol.bounding_box(
+            margins=exp.params['prediction_margins'])
     )
 
     # Save the prediction probabilities for comparison.
