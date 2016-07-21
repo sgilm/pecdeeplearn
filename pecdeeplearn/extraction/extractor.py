@@ -224,13 +224,14 @@ class Extractor:
                       copy.deepcopy(output_batch), \
                       copy.deepcopy(point_batch)
 
-        # Yield the final set of points before stopping.  This means that all
-        # valid points are extracted from, but some points (in the worst case
-        # batch_size - 1) will be repeated.  This isn't really a problem for
-        # either prediction or training.
-        yield self._process_input_batch(input_batch, clean_input), \
-              copy.deepcopy(output_batch), \
-              copy.deepcopy(point_batch)
+        # If any new data has been added, yield the final set of points before
+        # stopping.  This means that all valid points are extracted from, but
+        # some points (in the worst case batch_size - 1) will be repeated.
+        # This isn't really a problem for either prediction or training.
+        if count % batch_size != 0:
+            yield self._process_input_batch(input_batch, clean_input), \
+                  copy.deepcopy(output_batch), \
+                  copy.deepcopy(point_batch)
 
     def iterate_single(self, volume, point_map, batch_size, clean_input=True):
         """
