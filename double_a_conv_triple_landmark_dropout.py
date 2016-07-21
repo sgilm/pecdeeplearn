@@ -12,7 +12,7 @@ import numpy as np
 # loading and saving.
 exp = pdl.utils.Experiment(data_path.get())
 exp.create_experiment('double_a_conv_triple_landmark_dropout')
-exp.add_param('num_training_volumes', 2)
+exp.add_param('num_training_volumes', 45)
 exp.add_param('max_points_per_volume', 25000)
 exp.add_param('margins', (12, 12, 0))
 exp.add_param('local_patch_shape', [25, 25, 1])
@@ -40,7 +40,7 @@ exp.add_param('validation_prop', 0.2)
 exp.add_param('prediction_margins', (25, 25, 25))
 
 # List and load all volumes.
-vol_list = exp.list_volumes()[:4]
+vol_list = exp.list_volumes()
 test_vol_names = ['VL00080', 'VL00093', 'VL00028', 'VL00077', 'VL00094',
                   'VL00057', 'VL00024', 'VL00066', 'VL00063', 'VL00062',
                   'VL00075', 'VL00069', 'VL00038', 'VL00058', 'VL00031']
