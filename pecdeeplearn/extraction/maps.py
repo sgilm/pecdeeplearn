@@ -253,3 +253,85 @@ def targeted_map(volume, max_points=None, margins=(0, 0, 0),
     targeted[tuple(non_seg_indices)] = True
 
     return targeted
+
+
+def actual_predicted_map(actual_volume, predicted_volume, max_points,
+                         margins=(0, 0, 0), prop_correct_sample=0.5):
+
+    # Create slices to use for extracting the inner part of the volume.
+    margined_slices = \
+        [slice(margin, max_size - margin)
+         for margin, max_size in zip(margins, actual_volume.shape)]
+
+    # Get the actual and predicted margined segmentations in boolean form.
+    actual = actual_volume.seg_data.astype('bool')[margined_slices]
+    predicted = \
+        np.around(predicted_volume.seg_data).astype('bool')[margined_slices]
+
+    # Find the locations of the different classes of predicted points.
+    correct_positives = np.logical_and(actual is True, predicted is True)
+    correct_negatives = np.logical_and(actual is False, predicted is False)
+    false_positives = np.logical_and(actual is False, predicted is True)
+    false_negatives = np.logical_and(actual is True, predicted is False)
+
+    # Get the quantities of these points.
+    num_correct_positives = correct_positives.sum()
+    num_correct_negatives = correct_negatives.sum()
+    num_false_positives = false_positives.sum()
+    num_false_negatives = false_negatives.sum()
+
+    # Train on more correct positives than negatives if there are fewer of
+    # these.
+    num_correct_sample = int(prop_correct_sample * max_points)
+    num_correct_positives_sample = int(
+        num_correct_sample * (num_correct_negatives /
+                              (num_correct_positives + num_correct_negatives))
+    )
+    num_correct_negatives_sample = num_correct_sample - \
+                                   num_correct_positives_sample
+
+    # Train on more false positives than negatives if there are more of these.
+    num_false_sample = max_points - num_correct_sample
+    num_false_positives_sample = int(
+        num_false_sample * (num_false_positives /
+                            (num_false_positives + num_false_negatives))
+    )
+    num_false_negatives_sample = num_false_sample - num_false_positives_sample
+
+    # Make the selections.
+    correct_positives_sample = sample_indices_by_value(
+        correct_positives,
+        True,
+        num_correct_positives_sample
+    )
+    correct_negatives_sample = sample_indices_by_value(
+        correct_negatives,
+        True,
+        num_correct_negatives_sample
+    )
+    false_positives_sample = sample_indices_by_value(
+        false_positives,
+        True,
+        num_false_positives_sample
+    )
+    false_negatives_sample = sample_indices_by_value(
+        false_negatives,
+        True,
+        num_false_negatives_sample
+    )
+
+    # Fix the indices of the points (since the margined data has been used).
+    for i, margin in enumerate(margins):
+        correct_positives_sample[i] += margin
+        correct_negatives_sample[i] += margin
+        false_positives_sample[i] += margin
+        false_negatives_sample[i] += margin
+
+    # Create the map.
+    crf_map_array = np.zeros(actual_volume.shape, dtype='bool')
+    crf_map_array[tuple(correct_positives_sample)] = True
+    crf_map_array[tuple(correct_negatives_sample)] = True
+    crf_map_array[tuple(false_positives_sample)] = True
+    crf_map_array[tuple(false_negatives_sample)] = True
+
+    return crf_map_array
