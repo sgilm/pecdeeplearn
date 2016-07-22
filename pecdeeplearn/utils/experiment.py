@@ -92,7 +92,7 @@ class Experiment:
 
         return sorted(volumes)
 
-    def load_volume(self, volume_name, experiment=False):
+    def load_volume(self, volume_name, experiment=False, suffix=''):
         """Load a volume with landmark, header, and affine metadata."""
 
         # Load the mri data, which always comes from the same directory.
@@ -102,7 +102,7 @@ class Experiment:
         # Load the segmentation data from a different location depending on the
         # input argument.
         if experiment:
-            seg_filename = volume_name + '_seg.nii'
+            seg_filename = volume_name + suffix + '_seg.nii'
             seg = nibabel.load(os.path.join(self.experiment_path,
                                             seg_filename))
         else:
