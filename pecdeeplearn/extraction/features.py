@@ -20,11 +20,11 @@ class FeatureError(Exception):
     pass
 
 
-def patch(volume, point, kernel_shape):
+def patch(volume, point, kernel_shape, prob_seg=False):
     """Fetch and process a patch of a specified size from given volume."""
 
     # Get the raw data as a 3D array.
-    patch_data = raw_patch(volume, point, kernel_shape)
+    patch_data = raw_patch(volume, point, kernel_shape, prob_seg=prob_seg)
 
     return reshape_patch(patch_data, kernel_shape)
 
@@ -38,18 +38,18 @@ def flat_patch(volume, point, kernel_shape):
     return patch_data.reshape(np.prod(kernel_shape))
 
 
-def scaled_patch(volume, point, source_kernel, target_kernel):
+def scaled_patch(volume, point, source_kernel, target_kernel, prob_seg=False):
     """Get a patch of specified size and resample it to a different size."""
 
     # Get the scale factors and extract the patch.
     scale_factors = np.array(target_kernel) / np.array(source_kernel)
-    patch_data = raw_patch(volume, point, source_kernel)
+    patch_data = raw_patch(volume, point, source_kernel, prob_seg=prob_seg)
     scaled_data = scipy.ndimage.interpolation.zoom(patch_data, scale_factors)
 
     return reshape_patch(scaled_data, target_kernel)
 
 
-def raw_patch(volume, point, kernel_shape):
+def raw_patch(volume, point, kernel_shape, prob_seg=False):
     """Fetch raw data for a patch of specified size from a specified volume."""
 
     # Convert kernel shape to a mutable object for fixing up.
@@ -89,7 +89,10 @@ def raw_patch(volume, point, kernel_shape):
     # Create a tuple of the patch's indices.
     patch_indices = tuple([slice(*frame) for frame in patch_frames])
 
-    return volume.mri_data[patch_indices]
+    if prob_seg:
+        return volume.prob_seg_data[patch_indices]
+    else:
+        return volume.mri_data[patch_indices]
 
 
 def reshape_patch(patch_data, kernel_shape):
