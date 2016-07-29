@@ -11,62 +11,39 @@ import numpy as np
 # Create an experiment object to keep track of parameters and facilitate data
 # loading and saving.
 exp = pdl.utils.Experiment(data_path.get())
+exp.create_experiment('single_a_dense_five_landmark')
 exp.add_param('num_training_volumes', 45)
 exp.add_param('max_points_per_volume', 25000)
 exp.add_param('margins', (12, 12, 0))
 exp.add_param('local_patch_shape', [25, 25, 1])
-exp.add_param('local_patch_input_shape', [1, 25, 25])
-exp.add_param('local_patch_conv1_filter_size', (5, 5))
-exp.add_param('local_patch_conv1_num_filters', 64)
-exp.add_param('local_patch_pool1_pool_size', (2, 2))
-exp.add_param('local_seg_patch_shape', [25, 25, 1])
-exp.add_param('local_seg_patch_input_shape', [1, 25, 25])
-exp.add_param('local_seg_patch_conv1_filter_size', (5, 5))
-exp.add_param('local_seg_patch_conv1_num_filters', 64)
-exp.add_param('local_seg_patch_pool1_pool_size', (2, 2))
+exp.add_param('local_patch_input_shape', [25 * 25])
 exp.add_param('landmark_1', 'Sternal angle')
 exp.add_param('landmark_2', 'Left nipple')
 exp.add_param('landmark_3', 'Right nipple')
-exp.add_param('landmark_1_dense_num_units', 1000)
-exp.add_param('landmark_2_dense_num_units', 1000)
-exp.add_param('landmark_3_dense_num_units', 1000)
-exp.add_param('join_dense_num_units', 1000)
+exp.add_param('landmark_4', 'Left humerus ball')
+exp.add_param('landmark_5', 'Right humerus ball')
+exp.add_param('join_dense1_num_units', 978)
 exp.add_param('batch_size', 5000)
-exp.add_param('update_learning_rate', 0.0001)
+exp.add_param('update_learning_rate', 0.001)
 exp.add_param('update_momentum', 0.9)
 exp.add_param('max_epochs', 100)
 exp.add_param('validation_prop', 0.2)
-exp.add_param('prediction_margins', (25, 25, 25))
-
-# Predictions must be loaded from the experiment containing the best current
-# segmentations.
-exp.load_experiment('best')
 
 # List and load all volumes.
 vol_list = exp.list_volumes()
-test_vol_names = ['VL00080', 'VL00093', 'VL00028', 'VL00077', 'VL00094',
-                  'VL00057', 'VL00024', 'VL00066', 'VL00063', 'VL00062',
-                  'VL00075', 'VL00069', 'VL00038', 'VL00058', 'VL00031']
+test_vol_names = ['VL00027', 'VL00032', 'VL00033', 'VL00035', 'VL00042',
+                  'VL00047', 'VL00049', 'VL00056', 'VL00066', 'VL00067',
+                  'VL00070', 'VL00074', 'VL00080', 'VL00090', 'VL00096']
 for vol_name in test_vol_names:
     try:
         vol_list.remove(vol_name)
         vol_list.append(vol_name)
     except ValueError:
         pass
-vols = [(exp.load_volume(vol, experiment=False),
-         exp.load_volume(vol, experiment=True, suffix='_prob'))
-        for vol in vol_list]
-
-# Set up a new experiment for saving the predictions to.
-exp.create_experiment('single_a_conv_triple_landmark_secondary')
+vols = [exp.load_volume(vol) for vol in vol_list]
 
 # Standardise the data.
-pdl.utils.standardise_volumes([actual for actual, predicted in vols])
-
-# Use a dirty hack to help with extracting probability data later down the
-# line.
-for actual, predicted in vols:
-    actual.prob_seg_data = predicted.seg_data
+pdl.utils.standardise_volumes(vols)
 
 # Split into a training set and testing set.
 training_vols = vols[:exp.params['num_training_volumes']]
@@ -75,11 +52,11 @@ testing_vols = vols[exp.params['num_training_volumes']:]
 # Create training maps.
 training_maps = [
     pdl.extraction.half_half_map(
-        predicted,
+        vol,
         max_points=exp.params['max_points_per_volume'],
         margins=exp.params['margins']
     )
-    for actual, predicted in training_vols]
+    for vol in training_vols]
 
 # Create an Extractor.
 ext = pdl.extraction.Extractor()
@@ -88,13 +65,7 @@ ext = pdl.extraction.Extractor()
 ext.add_feature(
     feature_name='local_patch',
     feature_function=lambda volume, point:
-    pdl.extraction.patch(volume, point, exp.params['local_patch_shape'])
-)
-ext.add_feature(
-    feature_name='local_seg_patch',
-    feature_function=lambda volume, point:
-    pdl.extraction.patch(
-        volume, point, exp.params['local_seg_patch_shape'], prob_seg=True)
+    pdl.extraction.flat_patch(volume, point, exp.params['local_patch_shape'])
 )
 ext.add_feature(
     feature_name='landmark_1',
@@ -114,67 +85,48 @@ ext.add_feature(
     pdl.extraction.landmark_displacement(
         volume, point, exp.params['landmark_3'])
 )
+ext.add_feature(
+    feature_name='landmark_4',
+    feature_function=lambda volume, point:
+    pdl.extraction.landmark_displacement(
+        volume, point, exp.params['landmark_4'])
+)
+ext.add_feature(
+    feature_name='landmark_5',
+    feature_function=lambda volume, point:
+    pdl.extraction.landmark_displacement(
+        volume, point, exp.params['landmark_5'])
+)
 
 # Create the net.
 net = nolearn.lasagne.NeuralNet(
     layers=[
 
-        # Layers for the local patch.
+        # Layer for the local patch.
         (lasagne.layers.InputLayer,
          {'name': 'local_patch',
           'shape': tuple([None] + exp.params['local_patch_input_shape'])}),
-        (lasagne.layers.Conv2DLayer,
-         {'name': 'local_patch_conv1',
-          'num_filters': exp.params['local_patch_conv1_num_filters'],
-          'filter_size': exp.params['local_patch_conv1_filter_size'],
-          'pad': 'same'}),
-        (lasagne.layers.MaxPool2DLayer,
-         {'name': 'local_patch_pool1',
-          'pool_size': exp.params['local_patch_pool1_pool_size']}),
-        (lasagne.layers.FlattenLayer,
-         {'name': 'local_patch_flat'}),
 
-        # Layers for the local segmentation patch.
-        (lasagne.layers.InputLayer,
-         {'name': 'local_seg_patch',
-          'shape': tuple([None] + exp.params['local_seg_patch_input_shape'])}),
-        (lasagne.layers.Conv2DLayer,
-         {'name': 'local_seg_patch_conv1',
-          'num_filters': exp.params['local_seg_patch_conv1_num_filters'],
-          'filter_size': exp.params['local_seg_patch_conv1_filter_size'],
-          'pad': 'same'}),
-        (lasagne.layers.MaxPool2DLayer,
-         {'name': 'local_seg_patch_pool1',
-          'pool_size': exp.params['local_seg_patch_pool1_pool_size']}),
-        (lasagne.layers.FlattenLayer,
-         {'name': 'local_seg_patch_flat'}),
-
-        # Layers for the landmark displacement.
+        # Layers for landmarks.
         (lasagne.layers.InputLayer,
          {'name': 'landmark_1', 'shape': (None, 3)}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'landmark_1_dense',
-          'num_units': exp.params['landmark_1_dense_num_units']}),
         (lasagne.layers.InputLayer,
          {'name': 'landmark_2', 'shape': (None, 3)}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'landmark_2_dense',
-          'num_units': exp.params['landmark_2_dense_num_units']}),
         (lasagne.layers.InputLayer,
          {'name': 'landmark_3', 'shape': (None, 3)}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'landmark_3_dense',
-          'num_units': exp.params['landmark_3_dense_num_units']}),
+        (lasagne.layers.InputLayer,
+         {'name': 'landmark_4', 'shape': (None, 3)}),
+        (lasagne.layers.InputLayer,
+         {'name': 'landmark_5', 'shape': (None, 3)}),
 
-        # Layers for concatenation and output.
+        # Layers for output.
         (lasagne.layers.ConcatLayer,
-         {'name': 'concat',
-          'incomings': ['local_patch_flat', 'local_seg_patch_flat',
-                        'landmark_1_dense', 'landmark_2_dense',
-                        'landmark_3_dense']}),
+         {'name': 'join',
+          'incomings': ['local_patch', 'landmark_1', 'landmark_2',
+                        'landmark_3', 'landmark_4', 'landmark_5']}),
         (lasagne.layers.DenseLayer,
-         {'name': 'join_dense',
-          'num_units': exp.params['join_dense_num_units']}),
+         {'name': 'join_dense1',
+          'num_units': exp.params['join_dense1_num_units']}),
         (lasagne.layers.DenseLayer,
          {'name': 'output', 'num_units': 1,
           'nonlinearity': lasagne.nonlinearities.sigmoid}),
@@ -208,9 +160,8 @@ for training_map in training_maps:
 elapsed_training_time = 0
 
 # Train the network using a hybrid online/mini-batch approach.
-actual_training_vols = [actual for actual, predicted in training_vols]
 for i, (input_batch, output_batch) in enumerate(ext.iterate_multiple(
-        actual_training_vols, training_maps, exp.params['batch_size'])):
+        training_vols, training_maps, exp.params['batch_size'])):
 
     # Train and time the process.
     iteration_start_time = time.time()
@@ -235,10 +186,9 @@ except RuntimeError:
     exp.save_network_weights(net, 'net_weights')
 
 # Perform predictions on all testing volumes in the set.
-actual_testing_vols = [actual for actual, predicted in testing_vols]
 print('Beginning predictions.\n')
 prediction_start_time = time.time()
-for i, testing_vol in list(enumerate(actual_testing_vols)):
+for i, testing_vol in list(enumerate(testing_vols)):
 
     # Perform the prediction on the current testing volume.
     print("Predicting on volume " + testing_vol.name + ".")
@@ -246,8 +196,10 @@ for i, testing_vol in list(enumerate(actual_testing_vols)):
         net,
         testing_vol,
         exp.params['batch_size'],
-        bounds=testing_vol.bounding_box(
-            margins=exp.params['prediction_margins'])
+        bounds=[
+            exp.params['margins'],
+            np.array(testing_vol.shape) - 1 - np.array(exp.params['margins'])
+        ]
     )
 
     # Save the prediction probabilities for comparison.

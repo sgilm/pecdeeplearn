@@ -11,25 +11,13 @@ import numpy as np
 # Create an experiment object to keep track of parameters and facilitate data
 # loading and saving.
 exp = pdl.utils.Experiment(data_path.get())
-exp.create_experiment('quadruple_a_conv')
+exp.create_experiment('single_a_dense_zero_landmark')
 exp.add_param('num_training_volumes', 45)
 exp.add_param('max_points_per_volume', 25000)
 exp.add_param('margins', (12, 12, 0))
 exp.add_param('local_patch_shape', [25, 25, 1])
-exp.add_param('local_patch_input_shape', [1, 25, 25])
-exp.add_param('local_patch_conv1_filter_size', (5, 5))
-exp.add_param('local_patch_conv1_num_filters', 64)
-exp.add_param('local_patch_pool1_pool_size', (2, 2))
-exp.add_param('local_patch_conv2_filter_size', (5, 5))
-exp.add_param('local_patch_conv2_num_filters', 128)
-exp.add_param('local_patch_pool2_pool_size', (2, 2))
-exp.add_param('local_patch_conv3_filter_size', (3, 3))
-exp.add_param('local_patch_conv3_num_filters', 256)
-exp.add_param('local_patch_pool3_pool_size', (2, 2))
-exp.add_param('local_patch_conv4_filter_size', (3, 3))
-exp.add_param('local_patch_conv4_num_filters', 512)
-exp.add_param('local_patch_pool4_pool_size', (2, 2))
-exp.add_param('local_patch_dense_num_units', 1000)
+exp.add_param('local_patch_input_shape', [25 * 25])
+exp.add_param('join_dense1_num_units', 1000)
 exp.add_param('batch_size', 5000)
 exp.add_param('update_learning_rate', 0.001)
 exp.add_param('update_momentum', 0.9)
@@ -38,9 +26,9 @@ exp.add_param('validation_prop', 0.2)
 
 # List and load all volumes.
 vol_list = exp.list_volumes()
-test_vol_names = ['VL00080', 'VL00093', 'VL00028', 'VL00077', 'VL00094',
-                  'VL00057', 'VL00024', 'VL00066', 'VL00063', 'VL00062',
-                  'VL00075', 'VL00069', 'VL00038', 'VL00058', 'VL00031']
+test_vol_names = ['VL00027', 'VL00032', 'VL00033', 'VL00035', 'VL00042',
+                  'VL00047', 'VL00049', 'VL00056', 'VL00066', 'VL00067',
+                  'VL00070', 'VL00074', 'VL00080', 'VL00090', 'VL00096']
 for vol_name in test_vol_names:
     try:
         vol_list.remove(vol_name)
@@ -72,54 +60,22 @@ ext = pdl.extraction.Extractor()
 ext.add_feature(
     feature_name='local_patch',
     feature_function=lambda volume, point:
-    pdl.extraction.patch(volume, point, exp.params['local_patch_shape'])
+    pdl.extraction.flat_patch(volume, point, exp.params['local_patch_shape'])
 )
 
 # Create the net.
 net = nolearn.lasagne.NeuralNet(
     layers=[
 
-        # Layers for the local patch.
+        # Layer for the local patch.
         (lasagne.layers.InputLayer,
          {'name': 'local_patch',
           'shape': tuple([None] + exp.params['local_patch_input_shape'])}),
-        (lasagne.layers.Conv2DLayer,
-         {'name': 'local_patch_conv1',
-          'num_filters': exp.params['local_patch_conv1_num_filters'],
-          'filter_size': exp.params['local_patch_conv1_filter_size'],
-          'pad': 'same'}),
-        (lasagne.layers.MaxPool2DLayer,
-         {'name': 'local_patch_pool1',
-          'pool_size': exp.params['local_patch_pool1_pool_size']}),
-        (lasagne.layers.Conv2DLayer,
-         {'name': 'local_patch_conv2',
-          'num_filters': exp.params['local_patch_conv2_num_filters'],
-          'filter_size': exp.params['local_patch_conv2_filter_size'],
-          'pad': 'same'}),
-        (lasagne.layers.MaxPool2DLayer,
-         {'name': 'local_patch_pool2',
-          'pool_size': exp.params['local_patch_pool2_pool_size']}),
-        (lasagne.layers.Conv2DLayer,
-         {'name': 'local_patch_conv3',
-          'num_filters': exp.params['local_patch_conv3_num_filters'],
-          'filter_size': exp.params['local_patch_conv3_filter_size'],
-          'pad': 'same'}),
-        (lasagne.layers.MaxPool2DLayer,
-         {'name': 'local_patch_pool3',
-          'pool_size': exp.params['local_patch_pool3_pool_size']}),
-        (lasagne.layers.Conv2DLayer,
-         {'name': 'local_patch_conv4',
-          'num_filters': exp.params['local_patch_conv4_num_filters'],
-          'filter_size': exp.params['local_patch_conv4_filter_size'],
-          'pad': 'same'}),
-        (lasagne.layers.MaxPool2DLayer,
-         {'name': 'local_patch_pool4',
-          'pool_size': exp.params['local_patch_pool4_pool_size']}),
-        (lasagne.layers.DenseLayer,
-         {'name': 'local_patch_dense',
-          'num_units': exp.params['local_patch_dense_num_units']}),
 
-        # Layer for output.
+        # Layers for output.
+        (lasagne.layers.DenseLayer,
+         {'name': 'join_dense1',
+          'num_units': exp.params['join_dense1_num_units']}),
         (lasagne.layers.DenseLayer,
          {'name': 'output', 'num_units': 1,
           'nonlinearity': lasagne.nonlinearities.sigmoid}),
@@ -181,7 +137,7 @@ except RuntimeError:
 # Perform predictions on all testing volumes in the set.
 print('Beginning predictions.\n')
 prediction_start_time = time.time()
-for i, testing_vol in list(enumerate(testing_vols))[:5]:
+for i, testing_vol in list(enumerate(testing_vols)):
 
     # Perform the prediction on the current testing volume.
     print("Predicting on volume " + testing_vol.name + ".")
