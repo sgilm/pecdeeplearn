@@ -11,10 +11,10 @@ import numpy as np
 # Create an experiment object to keep track of parameters and facilitate data
 # loading and saving.
 exp = pdl.utils.Experiment(data_path.get())
-exp.create_experiment('single_c_dense_three_landmark')
+exp.create_experiment('single_c_dense_three_landmark_targeted')
 exp.add_param('num_training_volumes', 45)
 exp.add_param('max_points_per_volume', 25000)
-exp.add_param('margins', (12, 12, 0))
+exp.add_param('margins', (12, 0, 12))
 exp.add_param('local_patch_shape', [25, 1, 25])
 exp.add_param('local_patch_input_shape', [25 * 25])
 exp.add_param('landmark_1', 'Sternal angle')
@@ -26,6 +26,7 @@ exp.add_param('update_learning_rate', 0.001)
 exp.add_param('update_momentum', 0.9)
 exp.add_param('max_epochs', 100)
 exp.add_param('validation_prop', 0.2)
+exp.add_param('prediction_margins', (40, 40, 40))
 
 # List and load all volumes.
 vol_list = exp.list_volumes()
@@ -49,7 +50,7 @@ testing_vols = vols[exp.params['num_training_volumes']:]
 
 # Create training maps.
 training_maps = [
-    pdl.extraction.half_half_map(
+    pdl.extraction.targeted_map(
         vol,
         max_points=exp.params['max_points_per_volume'],
         margins=exp.params['margins']
@@ -172,16 +173,21 @@ print('Beginning predictions.\n')
 prediction_start_time = time.time()
 for i, testing_vol in list(enumerate(testing_vols)):
 
+    # Create bounds to avoid unnecessary prediction.
+    bounds = list(testing_vol.bounding_box(
+        margins=exp.params['prediction_margins']))
+    for j, (size, margin) in enumerate(zip(testing_vol.shape,
+                                         exp.params['margins'])):
+        bounds[0][j] = max(bounds[0][j], margin)
+        bounds[1][j] = min(bounds[1][j], size - margin - 1)
+
     # Perform the prediction on the current testing volume.
     print("Predicting on volume " + testing_vol.name + ".")
     predicted_vol = ext.predict(
         net,
         testing_vol,
         exp.params['batch_size'],
-        bounds=[
-            exp.params['margins'],
-            np.array(testing_vol.shape) - 1 - np.array(exp.params['margins'])
-        ]
+        bounds=bounds
     )
 
     # Save the prediction probabilities for comparison.
