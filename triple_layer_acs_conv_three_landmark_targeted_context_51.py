@@ -11,7 +11,9 @@ import time
 # Create an experiment object to keep track of parameters and facilitate data
 # loading and saving.
 exp = pdl.utils.Experiment(data_path.get())
-exp.create_experiment('triple_layer_acs_conv_three_landmark_targeted_context')
+exp.create_experiment(
+    'triple_layer_acs_conv_three_landmark_targeted_context_51'
+)
 exp.add_param('num_training_volumes', 45)
 exp.add_param('max_points_per_volume', 25000)
 exp.add_param('margins', (25, 25, 25))
@@ -95,7 +97,7 @@ exp.add_param('update_learning_rate', 0.001)
 exp.add_param('update_momentum', 0.9)
 exp.add_param('max_epochs', 100)
 exp.add_param('validation_prop', 0.2)
-exp.add_param('prediction_margins', (25, 25, 25))
+exp.add_param('prediction_margins', (20, 20, 20))
 
 # List and load all volumes.
 vol_list = exp.list_volumes()
