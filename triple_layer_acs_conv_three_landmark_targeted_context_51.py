@@ -20,9 +20,12 @@ exp.add_param('margins', (25, 25, 25))
 exp.add_param('local_a_patch_shape', [25, 25, 1])
 exp.add_param('local_c_patch_shape', [25, 1, 25])
 exp.add_param('local_s_patch_shape', [1, 25, 25])
-exp.add_param('context_a_patch_shape', [51, 51, 1])
-exp.add_param('context_c_patch_shape', [51, 1, 51])
-exp.add_param('context_s_patch_shape', [1, 51, 51])
+exp.add_param('context_a_source_patch_shape', [51, 51, 1])
+exp.add_param('context_c_source_patch_shape', [51, 1, 51])
+exp.add_param('context_s_source_patch_shape', [1, 51, 51])
+exp.add_param('context_a_target_patch_shape', [25, 25, 1])
+exp.add_param('context_c_target_patch_shape', [25, 1, 25])
+exp.add_param('context_s_target_patch_shape', [1, 25, 25])
 exp.add_param('local_patch_input_shape', [1, 25, 25])
 exp.add_param('context_patch_input_shape', [1, 25, 25])
 exp.add_param('landmark_1', 'Sternal angle')
@@ -150,17 +153,23 @@ ext.add_feature(
 ext.add_feature(
     feature_name='context_a_patch',
     feature_function=lambda volume, point:
-    pdl.extraction.patch(volume, point, exp.params['context_a_patch_shape'])
+    pdl.extraction.scaled_patch(volume, point,
+                                exp.params['context_a_source_patch_shape'],
+                                exp.params['context_a_target_patch_shape'])
 )
 ext.add_feature(
     feature_name='context_c_patch',
     feature_function=lambda volume, point:
-    pdl.extraction.patch(volume, point, exp.params['context_c_patch_shape'])
+    pdl.extraction.scaled_patch(volume, point,
+                                exp.params['context_c_source_patch_shape'],
+                                exp.params['context_c_target_patch_shape'])
 )
 ext.add_feature(
     feature_name='context_s_patch',
     feature_function=lambda volume, point:
-    pdl.extraction.patch(volume, point, exp.params['context_s_patch_shape'])
+    pdl.extraction.scaled_patch(volume, point,
+                                exp.params['context_s_source_patch_shape'],
+                                exp.params['context_s_target_patch_shape'])
 )
 ext.add_feature(
     feature_name='landmark_1',
