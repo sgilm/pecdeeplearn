@@ -11,14 +11,14 @@ import time
 # Create an experiment object to keep track of parameters and facilitate data
 # loading and saving.
 exp = pdl.utils.Experiment(data_path.get())
-exp.create_experiment('triple_layer_acs_conv_three_landmark_targeted_45')
+exp.create_experiment('triple_layer_acs_conv_three_landmark_targeted_dropout')
 exp.add_param('num_training_volumes', 45)
 exp.add_param('max_points_per_volume', 25000)
-exp.add_param('margins', (22, 22, 22))
-exp.add_param('local_a_patch_shape', [45, 45, 1])
-exp.add_param('local_c_patch_shape', [45, 1, 45])
-exp.add_param('local_s_patch_shape', [1, 45, 45])
-exp.add_param('local_patch_input_shape', [1, 45, 45])
+exp.add_param('margins', (12, 12, 12))
+exp.add_param('local_a_patch_shape', [25, 25, 1])
+exp.add_param('local_c_patch_shape', [25, 1, 25])
+exp.add_param('local_s_patch_shape', [1, 25, 25])
+exp.add_param('local_patch_input_shape', [1, 25, 25])
 exp.add_param('landmark_1', 'Sternal angle')
 exp.add_param('landmark_2', 'Left nipple')
 exp.add_param('landmark_3', 'Right nipple')
@@ -59,12 +59,14 @@ exp.add_param('landmark_3_dense1_num_units', 100)
 exp.add_param('landmark_3_dense2_num_units', 100)
 exp.add_param('landmark_3_dense3_num_units', 100)
 exp.add_param('join_dense1_num_units', 1000)
+exp.add_param('join_dense2_num_units', 1000)
+exp.add_param('dropout1_p', 0.5)
 exp.add_param('batch_size', 5000)
 exp.add_param('update_learning_rate', 0.001)
 exp.add_param('update_momentum', 0.9)
 exp.add_param('max_epochs', 100)
 exp.add_param('validation_prop', 0.2)
-exp.add_param('prediction_margins', (25, 25, 25))
+exp.add_param('prediction_margins', (20, 20, 20))
 
 # List and load all volumes.
 vol_list = exp.list_volumes()
@@ -262,6 +264,11 @@ net = nolearn.lasagne.NeuralNet(
         (lasagne.layers.DenseLayer,
          {'name': 'join_dense1',
           'num_units': exp.params['join_dense1_num_units']}),
+         (lasagne.layers.DropoutLayer,
+          {'name': 'dropout1', 'p': exp.params['dropout1_p']}),
+        (lasagne.layers.DenseLayer,
+         {'name': 'join_dense2',
+          'num_units': exp.params['join_dense2_num_units']}),
         (lasagne.layers.DenseLayer,
          {'name': 'output', 'num_units': 1,
           'nonlinearity': lasagne.nonlinearities.sigmoid}),
