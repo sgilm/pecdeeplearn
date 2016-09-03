@@ -269,10 +269,10 @@ def actual_predicted_map(actual_volume, predicted_volume, max_points,
         np.around(predicted_volume.seg_data).astype('bool')[margined_slices]
 
     # Find the locations of the different classes of predicted points.
-    correct_positives = np.logical_and(actual is True, predicted is True)
-    correct_negatives = np.logical_and(actual is False, predicted is False)
-    false_positives = np.logical_and(actual is False, predicted is True)
-    false_negatives = np.logical_and(actual is True, predicted is False)
+    correct_positives = np.logical_and(actual == True, predicted == True)
+    correct_negatives = np.logical_and(actual == False, predicted == False)
+    false_positives = np.logical_and(actual == False, predicted == True)
+    false_negatives = np.logical_and(actual == True, predicted == False)
 
     # Get the quantities of these points.
     num_correct_positives = correct_positives.sum()
